@@ -64,8 +64,15 @@ void send_msg_handler() {
         fgets(buffer, BUFFER_SZ, stdin);
         str_trim_lf(buffer, BUFFER_SZ);
 
-        if (strcmp(buffer, "exit") == 0) {
-            break;
+        if (!strcmp(buffer, ":help") || !strcmp(buffer, ":h")) {
+            printf("Chatter commands:\n");
+            printf("- :c | :create <password>     - Create a new room with <password>\n");
+            printf("- :j | :join <id> <password>  - Join a room with <id> & <password>\n");
+            printf("- :s | :switch <id>           - Switch to room with <id>\n");
+            printf("- :l | :leave                 - Temporary leave room and return to lobby\n");
+            printf("- :r | :rename <name>         - Rename self to <name>\n");
+            printf("- :f | :file <filename>       - Send file with <filename> to roommate\n");
+            printf("- :i | :info                  - Print room info\n");
         }
         else {
             time(&now);
@@ -79,7 +86,8 @@ void send_msg_handler() {
     catch_ctrl_c_and_exit();
 }
 
-int main(int argc, char const* argv[]) {
+// int main(int argc, char const* argv[]) {
+int main() {
     const char* ip = SERVER_IP;
     int port = PORT;
     // if (argc < 2) {
@@ -102,6 +110,10 @@ int main(int argc, char const* argv[]) {
         printf("ERROR: Enter name correctly\n");
         return EXIT_FAILURE;
     }
+    else if (!strcmp(name, "SYSTEM")) {
+        printf("ERROR: Reserved name. Please use another");
+        return EXIT_FAILURE;
+    }
 
     struct sockaddr_in serv_addr;
 
@@ -118,36 +130,11 @@ int main(int argc, char const* argv[]) {
         return EXIT_FAILURE;
     }
 
-    // Send the info
-    // send(sockfd, &argc, sizeof(int), 0);
-    // send(sockfd, argv[1], PASSWORD_LEN, 0);
-    // if (argv[2])
-    //     send(sockfd, argv[2], GROUP_ID_LEN, 0);
     send(sockfd, name, NAME_LEN, 0);
 
-    // Receive code from server
-    // 1 - Accepted
-    // -1 - Used name
-    // 0 - Room full
-    // int res_code = 0;
-    // if (recv(sockfd, &res_code, sizeof(int), 0) <= 0) {
-    //     printf("An error occured\n");
-    //     flag = 1;
-    // }
-    // else {
-    // }
-
-    // if (res_code == -1) {
-    //     printf("Name already taken\n");
-    //     flag = 1;
-    // }
-    // else if (res_code == 0) {
-    //     printf("This room does not exist or is full\n");
-    //     flag = 1;
-    // }
-    // else {
-    printf("=== WELCOME TO THE CHATTER ===\n");
+    printf("=== WELCOME TO CHATTER ===\n");
     printf("Current time: %s", ctime(&now));
+    printf("Type :h or :help for Chatter commands\n");
 
     // Thread for sending the messages
     pthread_t send_msg_thread;

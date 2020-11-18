@@ -26,33 +26,47 @@ typedef struct {
 } client_t;
 
 typedef struct {
-    char* messages[GROUP_MAX_MESSAGES];     // Max messages allocated for one group
+    char messages[GROUP_MAX_MESSAGES][BUFFER_SZ];     // Max messages allocated for one group
     client_t* clients[GROUP_MAX_CLIENTS];   // Room members
     char group_id[GROUP_ID_LEN];            // Room ID
     char password[PASSWORD_LEN];            // Room password
+    int mes_count;                          // Messages count
     int cli_count;                          // Member count
     int idx;                                // Room index
 } group_t;
 
-// Prompt
+// UTILITIES ===
+
 void str_overwrite_stdout();
-// Trim '\n'
 void str_trim_lf(char* arr, int length);
 void print_ip_addr(struct sockaddr_in addr);
 int check_used_name(char* name, char* group_id);
 
+// ===
+// SERVER FUNCTIONS ===
+
 void join_server(client_t* cl);
 void leave_server(int uid);
+
+// ===
+// GROUP FUNCTIONS ===
 
 char* create_group(char* password);
 int check_group(char* group_id, char* password);
 group_t* get_group(char* group_id);
-void join_group(char* group_id, client_t* cl);
+int join_group(char* group_id, char* password, client_t* cl);
 void leave_group(client_t* cl);
-// void switch_group(char* group_id, client_t* cl);
 
-void send_group(char* s, int uid, char* group_id);
+void return_lobby(client_t* cl);
+void switch_group(char* group_id, client_t* cl);
+
+// ===
+// MESSAGING FUNCTION ===
+void send_group(char* s, char* group_id);
 void send_user(char* s, int uid);
+void send_other(char* s, int uid, char* group_id);
+
+// ===
 
 void* handle_client(void* arg);
 
