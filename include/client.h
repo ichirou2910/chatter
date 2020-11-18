@@ -5,7 +5,7 @@
 #define PORT 9000
 
 #define MAX_CLIENTS 100
-#define BUFFER_SZ 2048
+#define BUFFER_SZ 1024
 #define NAME_LEN 32
 #define GROUP_ID_LEN 7
 #define PASSWORD_LEN 32

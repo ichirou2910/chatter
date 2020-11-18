@@ -13,10 +13,6 @@
 #include <signal.h>
 #include <time.h>
 
-#define MAX_CLIENTS 100
-#define BUFFER_SZ 2048
-#define NAME_LEN 32
-
 volatile sig_atomic_t flag = 0;
 int sockfd = 0;
 char name[NAME_LEN];
@@ -50,7 +46,7 @@ void recv_msg_handler() {
         if (receive > 0) {
             time(&now);
             local = localtime(&now);
-            printf("%02d:%02d ~ %s ", local->tm_hour, local->tm_min, message);
+            printf("%02d:%02d ~ %s\n", local->tm_hour, local->tm_min, message);
             str_overwrite_stdout();
         }
         else if (receive == 0) {
@@ -62,7 +58,6 @@ void recv_msg_handler() {
 
 void send_msg_handler() {
     char buffer[BUFFER_SZ] = {};
-    char message[BUFFER_SZ + NAME_LEN + 8] = {};
 
     while (1) {
         str_overwrite_stdout();
@@ -75,11 +70,11 @@ void send_msg_handler() {
         else {
             time(&now);
             local = localtime(&now);
-            sprintf(message, "[%s]: %s\n", name, buffer);
-            send(sockfd, message, strlen(message) * 2, 0);
+            // sprintf(message, "%s\n", buffer);
+            send(sockfd, buffer, strlen(buffer), 0);
         }
         bzero(buffer, BUFFER_SZ);
-        bzero(message, BUFFER_SZ + NAME_LEN);
+        // bzero(message, BUFFER_SZ + NAME_LEN);
     }
     catch_ctrl_c_and_exit();
 }
@@ -87,12 +82,12 @@ void send_msg_handler() {
 int main(int argc, char const* argv[]) {
     const char* ip = SERVER_IP;
     int port = PORT;
-    if (argc < 2) {
-        printf("Usage: %s password [group_id]\n", argv[0]);
-        printf("If provided group_id, join room with password and group_id\n");
-        printf("If not provided group_id, create new room with password\n");
-        return EXIT_FAILURE;
-    }
+    // if (argc < 2) {
+    //     printf("Usage: %s password [group_id]\n", argv[0]);
+    //     printf("If provided group_id, join room with password and group_id\n");
+    //     printf("If not provided group_id, create new room with password\n");
+    //     return EXIT_FAILURE;
+    // }
 
     time(&now);
     local = localtime(&now);
@@ -124,50 +119,50 @@ int main(int argc, char const* argv[]) {
     }
 
     // Send the info
-    send(sockfd, &argc, sizeof(int), 0);
-    send(sockfd, argv[1], PASSWORD_LEN, 0);
-    if (argv[2])
-        send(sockfd, argv[2], GROUP_ID_LEN, 0);
+    // send(sockfd, &argc, sizeof(int), 0);
+    // send(sockfd, argv[1], PASSWORD_LEN, 0);
+    // if (argv[2])
+    //     send(sockfd, argv[2], GROUP_ID_LEN, 0);
     send(sockfd, name, NAME_LEN, 0);
 
     // Receive code from server
     // 1 - Accepted
     // -1 - Used name
     // 0 - Room full
-    int res_code = 0;
-    if (recv(sockfd, &res_code, sizeof(int), 0) <= 0) {
-        printf("An error occured\n");
-        flag = 1;
-    }
-    else {
+    // int res_code = 0;
+    // if (recv(sockfd, &res_code, sizeof(int), 0) <= 0) {
+    //     printf("An error occured\n");
+    //     flag = 1;
+    // }
+    // else {
+    // }
+
+    // if (res_code == -1) {
+    //     printf("Name already taken\n");
+    //     flag = 1;
+    // }
+    // else if (res_code == 0) {
+    //     printf("This room does not exist or is full\n");
+    //     flag = 1;
+    // }
+    // else {
+    printf("=== WELCOME TO THE CHATTER ===\n");
+    printf("Current time: %s", ctime(&now));
+
+    // Thread for sending the messages
+    pthread_t send_msg_thread;
+    if (pthread_create(&send_msg_thread, NULL, (void*)send_msg_handler, NULL) != 0) {
+        printf("ERROR: pthread\n");
+        return EXIT_FAILURE;
     }
 
-    if (res_code == -1) {
-        printf("Name already taken\n");
-        flag = 1;
+    // Thread for receiving messages
+    pthread_t recv_msg_thread;
+    if (pthread_create(&recv_msg_thread, NULL, (void*)recv_msg_handler, NULL) != 0) {
+        printf("ERROR: pthread\n");
+        return EXIT_FAILURE;
     }
-    else if (res_code == 0) {
-        printf("This room does not exist or is full\n");
-        flag = 1;
-    }
-    else {
-        printf("=== WELCOME TO THE CHATROOM ===\n");
-        printf("Current time: %s", ctime(&now));
-
-        // Thread for sending the messages
-        pthread_t send_msg_thread;
-        if (pthread_create(&send_msg_thread, NULL, (void*)send_msg_handler, NULL) != 0) {
-            printf("ERROR: pthread\n");
-            return EXIT_FAILURE;
-        }
-
-        // Thread for receiving messages
-        pthread_t recv_msg_thread;
-        if (pthread_create(&recv_msg_thread, NULL, (void*)recv_msg_handler, NULL) != 0) {
-            printf("ERROR: pthread\n");
-            return EXIT_FAILURE;
-        }
-    }
+    // }
 
 
     while (1) {

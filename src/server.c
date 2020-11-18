@@ -94,6 +94,9 @@ int main() {
         cl->address = cli_addr;
         cl->sockfd = connfd;
         cl->uid = uid++;
+        for (int i = 0; i < CLIENTS_MAX_GROUP; i++) {
+            cl->groups[i][0] = '\0';
+        }
 
         // Add client to queue
         join_server(cl);
@@ -165,11 +168,8 @@ void print_ip_addr(struct sockaddr_in addr) {
 }
 
 // Handle message sending to clients
-// Send message S to clients of room GROUP_ID using MODE
-//
-// 0 - Send to all clients except one with UID
-// 1 - Send to client UID only
-void send_message(char* s, int uid, char* group_id, int mode) {
+// Send message S to clients of room GROUP_ID 
+void send_group(char* s, int uid, char* group_id) {
     pthread_mutex_lock(&clients_mutex);
 
     group_t* gr = get_group(group_id);
@@ -178,45 +178,38 @@ void send_message(char* s, int uid, char* group_id, int mode) {
         return;
     }
 
-    if (mode == 0) {
-        int count = gr->cli_count;
-        for (int i = 0; i < GROUP_MAX_CLIENTS; i++) {
-            if (count == 0) {
-                break;
-            }
-            if (gr->clients[i]) {
-                count--;
-                if (gr->clients[i]->uid != uid) {
-                    if (write(gr->clients[i]->sockfd, s, strlen(s)) < 0) {
-                        printf("ERROR: write to descriptor failed\n");
-                        break;
-                    }
-                }
-            }
+    int count = gr->cli_count;
+    for (int i = 0; i < GROUP_MAX_CLIENTS; i++) {
+        if (count == 0) {
+            break;
         }
-    }
-    else if (mode == 1) {
-        int count = 0;
-        for (int i = 0; i < GROUP_MAX_CLIENTS; i++) {
-            // Prevent looping through all 100 clients
-            if (count == gr->cli_count)
-                break;
-            else if (gr->clients[i]) {
-                count++;
-                if (gr->clients[i]->uid == uid) {
-                    if (write(gr->clients[i]->sockfd, s, strlen(s)) < 0) {
-                        printf("ERROR: write to descriptor failed\n");
-                        break;
-                    }
-                    else {
-                        break;
-                    }
+        if (gr->clients[i]) {
+            count--;
+            if (gr->clients[i]->uid != uid) {
+                if (write(gr->clients[i]->sockfd, s, strlen(s)) < 0) {
+                    printf("ERROR: write to descriptor failed\n");
+                    break;
                 }
             }
         }
     }
 
     pthread_mutex_unlock(&clients_mutex);
+}
+
+void send_user(char* s, int uid) {
+    for (int i = 0; i < GROUP_MAX_CLIENTS * MAX_GROUPS; i++) {
+        // Prevent looping through all 100 clients
+        if (clients[i]->uid == uid) {
+            if (write(clients[i]->sockfd, s, strlen(s)) < 0) {
+                printf("ERROR: write to descriptor failed\n");
+                break;
+            }
+            else {
+                break;
+            }
+        }
+    }
 }
 
 // Check if NAME is used in GROUP_ID
@@ -282,6 +275,7 @@ char* create_group(char* password) {
     for (int i = 0; i < MAX_GROUPS; i++) {
         if (!groups[i]) {
             groups[i] = gr;
+            gr->idx = i;
             gr_count++;
             printf("Created new group: %s - %s\n", groups[i]->group_id, groups[i]->password);
             return id;
@@ -301,6 +295,12 @@ void join_group(char* group_id, client_t* cl) {
                     groups[i]->clients[j] = cl;
                     groups[i]->cli_count++;
                     // printf("Joined group\n");
+                    for (int k = 0; k < CLIENTS_MAX_GROUP; k++) {
+                        if (!cl->groups[k]) {
+                            strcpy(cl->groups[k], groups[i]->group_id);
+                            break;
+                        }
+                    }
                     break;
                 }
             }
@@ -309,109 +309,143 @@ void join_group(char* group_id, client_t* cl) {
     }
 }
 
-// Remove client UID from group GROUP_ID
-void leave_group(char* group_id, int uid) {
+// void switch_group(char* group_id, client_t* cl) {
+
+// }
+
+// Remove client CL from all joined groups
+void leave_group(client_t* cl) {
     pthread_mutex_lock(&clients_mutex);
 
-    group_t* target_group;
-    int idx = -1;
+    for (int i = 0; i < cl->gr_count; i++) {
+        // Remove member from room
+        if (cl->groups[i]) {
+            group_t* gr = get_group(cl->groups[i]);
+            printf("Quit: %s\n", cl->groups[i]);
+            for (int j = 0; j < gr->cli_count; j++) {
+                if (gr->clients[j]) {
+                    if (gr->clients[j]->uid == uid) {
+                        gr->clients[j] = NULL;
+                        gr->cli_count--;
+                        break;
+                    }
+                }
+            }
+            // Remove room if empty
+            if (gr->cli_count == 0) {
+                printf("[System] Room ID %s removed\n", gr->group_id);
+                groups[gr->idx] = NULL;
+                gr_count--;
 
-    for (int i = 0; i < MAX_GROUPS; i++) {
-        if (groups[i] && !strcmp(groups[i]->group_id, group_id)) {
-            target_group = groups[i];
-            idx = i;
-            break;
-        }
-    }
-
-    // Remove member from room
-    for (int i = 0; i < GROUP_MAX_CLIENTS; i++) {
-        if (target_group->clients[i]) {
-            if (target_group->clients[i]->uid == uid) {
-                target_group->clients[i] = NULL;
-                target_group->cli_count--;
-                break;
+                free(gr);
             }
         }
     }
+    // int count = 0;
+    // for (int i = 0; i < GROUP_MAX_CLIENTS; i++) {
+    //     if (count == gr->cli_count) {
+    //         return 0;
+    //     }
+    //     if (gr->clients[i]) {
+    //         count++;
+    //         if (!strcmp(gr->clients[i]->name, name))
+    //             return 1;
+    //     }
+    // }
 
-    // Remove room if empty
-    if (target_group->cli_count == 0) {
-        printf("[System] Room ID %s removed\n", target_group->group_id);
-        groups[idx] = NULL;
-        gr_count--;
+    // group_t* target_group;
+    // int idx = -1;
 
-        free(target_group);
-    }
+    // for (int i = 0; i < MAX_GROUPS; i++) {
+    //     if (groups[i] && !strcmp(groups[i]->group_id, group_id)) {
+    //         target_group = groups[i];
+    //         idx = i;
+    //         break;
+    //     }
+    // }
+
+    // // Remove member from room
+    // for (int i = 0; i < GROUP_MAX_CLIENTS; i++) {
+    //     if (target_group->clients[i]) {
+    //         if (target_group->clients[i]->uid == uid) {
+    //             target_group->clients[i] = NULL;
+    //             target_group->cli_count--;
+    //             break;
+    //         }
+    //     }
+    // }
+
 
     pthread_mutex_unlock(&clients_mutex);
 }
 
 void* handle_client(void* arg) {
-    int argc = 0;
     char buffer[BUFFER_SZ];
     char name[NAME_LEN];
-    char group_id[GROUP_ID_LEN];
-    int gid;
-    char password[PASSWORD_LEN];
+    // int gid;
+    // char password[PASSWORD_LEN];
     int leave_flag = 0;
-    int res_code = 1;
-    int joined = 0;
+    // int res_code = 1;
+    // int joined = 0;
+    int joined_group = 0; // If user has joined a group
+    char* cmd;
+    char* param;
+    char current_group[GROUP_ID_LEN] = {}; // Current target room
 
     client_t* cli = (client_t*)arg;
     bzero(buffer, BUFFER_SZ);
 
-    // Group ID and Password
-    if (recv(cli->sockfd, &argc, sizeof(int), 0) <= 0) {
-        printf("ERROR: Cannot retrieve args info\n");
-        leave_flag = 1;
-    }
-    else {
-        // printf("Argc: %d\n", argc);
-        if (recv(cli->sockfd, password, PASSWORD_LEN, 0) <= 0) {
-            printf("ERROR: Cannot retrieve info\n");
-        }
-        else {
-            // printf("Pass: %s\n", password);
-            if (argc == 2) {
-                // printf("Creating a new group...\n");
-                char* id = create_group(password);
-                // send_message(cli->sockfd, cli->group_id, GROUP_ID_LEN, 0);
-                strcpy(cli->group_id, id);
-                join_group(cli->group_id, cli);
-                joined = 1;
-                // printf("Group: %s\n", id);
-            }
-            else {
-                if (recv(cli->sockfd, group_id, GROUP_ID_LEN, 0) <= 0) {
-                    printf("ERROR: Cannot retrieve info\n");
-                    leave_flag = 1;
-                }
-                else {
-                    printf("ID: %s\n", group_id);
-                    gid = check_group(group_id, password);
-                    if (gid < 0) {
-                        printf("ERROR: Wrong group info\n");
-                        leave_flag = 1;
-                    }
-                    else {
-                        // Check if room is full
-                        if (groups[gid]->cli_count == GROUP_MAX_CLIENTS) {
-                            printf("[System] Room full\n");
-                            res_code = 0;
-                            send(cli->sockfd, &res_code, sizeof(int), 0);
-                            leave_flag = 1;
-                        }
-                        else {
-                            strcpy(cli->group_id, group_id);
-                            join_group(cli->group_id, cli);
-                            joined = 1;
-                        }
-                    }
-                }
-            }
-        }
-    }
+    // // Group ID and Password
+    // if (recv(cli->sockfd, &argc, sizeof(int), 0) <= 0) {
+    //     printf("ERROR: Cannot retrieve args info\n");
+    //     leave_flag = 1;
+    // }
+    // else {
+    //     // printf("Argc: %d\n", argc);
+    //     if (recv(cli->sockfd, password, PASSWORD_LEN, 0) <= 0) {
+    //         printf("ERROR: Cannot retrieve info\n");
+    //     }
+    //     else {
+    //         // printf("Pass: %s\n", password);
+    //         if (argc == 2) {
+    //             // printf("Creating a new group...\n");
+    //             char* id = create_group(password);
+    //             // send_message(cli->sockfd, cli->group_id, GROUP_ID_LEN, 0);
+    //             strcpy(cli->group_id, id);
+    //             join_group(cli->group_id, cli);
+    //             joined = 1;
+    //             // printf("Group: %s\n", id);
+    //         }
+    //         else {
+    //             if (recv(cli->sockfd, group_id, GROUP_ID_LEN, 0) <= 0) {
+    //                 printf("ERROR: Cannot retrieve info\n");
+    //                 leave_flag = 1;
+    //             }
+    //             else {
+    //                 printf("ID: %s\n", group_id);
+    //                 gid = check_group(group_id, password);
+    //                 if (gid < 0) {
+    //                     printf("ERROR: Wrong group info\n");
+    //                     leave_flag = 1;
+    //                 }
+    //                 else {
+    //                     // Check if room is full
+    //                     if (groups[gid]->cli_count == GROUP_MAX_CLIENTS) {
+    //                         printf("[System] Room full\n");
+    //                         res_code = 0;
+    //                         send(cli->sockfd, &res_code, sizeof(int), 0);
+    //                         leave_flag = 1;
+    //                     }
+    //                     else {
+    //                         strcpy(cli->group_id, group_id);
+    //                         join_group(cli->group_id, cli);
+    //                         joined = 1;
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
 
     if (!leave_flag) {
         if (recv(cli->sockfd, name, NAME_LEN, 0) <= 0 || strlen(name) < 2 || strlen(name) >= NAME_LEN) {
@@ -419,43 +453,114 @@ void* handle_client(void* arg) {
             leave_flag = 1;
         }
         else {
-            int res = check_used_name(name, cli->group_id);
-            if (res == -1) {
-                printf("An error occured. Please try again\n");
-                leave_flag = 1;
-            }
-            else if (res == 1) {
-                res_code = -1;
-                send(cli->sockfd, &res_code, sizeof(int), 0);
-                leave_flag = 1;
-            }
-            else {
-                strcpy(cli->name, name);
-                send(cli->sockfd, &res_code, sizeof(int), 0);
-                sprintf(buffer, "-- %s has joined the chat --\n", cli->name);
-                printf("[System] User %s (uid: %d) joined group %s\n", cli->name, cli->uid, cli->group_id);
-                send_message(buffer, cli->uid, cli->group_id, 0);
-                sprintf(buffer, "[SERVER] Room ID: %s\n", cli->group_id);
-                send_message(buffer, cli->uid, cli->group_id, 1);
-            }
+            // int res = check_used_name(name, cli->group_id);
+            // if (res == -1) {
+            //     printf("An error occured. Please try again\n");
+            //     leave_flag = 1;
+            // }
+            // else if (res == 1) {
+            //     res_code = -1;
+            //     send(cli->sockfd, &res_code, sizeof(int), 0);
+            //     leave_flag = 1;
+            // }
+            // else {
+            strcpy(cli->name, name);
+            // send(cli->sockfd, &res_code, sizeof(int), 0);
+            // sprintf(buffer, "-- %s has joined the chat --\n", cli->name);
+            // printf("[System] User %s (uid: %d) joined group %s\n", cli->name, cli->uid, cli->group_id);
+            // send_message(buffer, cli->uid, cli->group_id, 0);
+            // sprintf(buffer, "[SERVER] Room ID: %s\n", cli->group_id);
+            // send_message(buffer, cli->uid, cli->group_id, 1);
+        // }
         }
     }
 
-    bzero(buffer, BUFFER_SZ);
+    // bzero(buffer, BUFFER_SZ);
 
     // While stay connected to the chat
     while (!leave_flag) {
         int receive = recv(cli->sockfd, buffer, BUFFER_SZ, 0);
+        // printf("%s\n", buffer);
+        // for (int i = 0; i < receive; i++) {
+        //     printf("%d ", buffer[i]);
+        // }
+        // printf("\n");
 
         if (receive > 0) {
-            send_message(buffer, cli->uid, cli->group_id, 0);
-            printf("[System] Group: %s, Message: %s", cli->group_id, buffer);
-            str_trim_lf(buffer, strlen(buffer));
+            buffer[strlen(buffer)] = 0;
+            // Extract command
+            cmd = strtok(buffer, " \n");
+            if (cmd == NULL) {
+                printf("No command\n");
+            }
+            else if (!strcmp(buffer, ":create") || !strcmp(buffer, ":c")) {
+                // printf("Someone requested to join\n");
+                param = strtok(NULL, " \n");
+                printf("Create request: %s\n", param);
+                char* result = create_group(param);
+                join_group(result, cli);
+                sprintf(buffer, "[System] Group created. Group ID: %s", result);
+                send_user(buffer, cli->uid);
+                joined_group = 1;
+                strcpy(current_group, result);
+            }
+            else if (!strcmp(buffer, ":join") || !strcmp(buffer, ":j")) {
+                // printf("Someone requested to join\n");
+                param = strtok(NULL, " \n");
+                printf("Join request to %s\n", param);
+                join_group(param, cli);
+                joined_group = 1;
+                strcpy(current_group, param);
+            }
+            else if (!strcmp(buffer, ":switch") || !strcmp(buffer, ":s")) {
+                // printf("Someone requested to join\n");
+                param = strtok(NULL, " \n");
+                printf("Switch request to %s\n", param);
+                // switch_group(param, cli);
+                strcpy(current_group, param);
+                sprintf(buffer, "[System] Switched to group %s", current_group);
+                send_user(buffer, cli->uid);
+            }
+            else if (!strcmp(cmd, ":quit") || !strcmp(cmd, ":q")) {
+                printf("Quit request\n");
+                leave_flag = 1;
+            }
+            else if (!strcmp(cmd, ":info") || !strcmp(cmd, ":i")) {
+                printf("Info request\n");
+            }
+            else if (!strcmp(cmd, ":rename") || !strcmp(cmd, ":r")) {
+                param = strtok(NULL, " \n");
+                printf("Rename request to %s\n", param);
+                sprintf(buffer, "[System] Renamed %s to %s", cli->name, param);
+                strcpy(cli->name, param);
+                send_group(buffer, cli->uid, current_group);
+            }
+            else if (!strcmp(cmd, ":users") || !strcmp(cmd, ":u")) {
+                printf("User List request\n");
+            }
+            else if (!strcmp(cmd, ":help") || !strcmp(cmd, ":h")) {
+                printf("Help request\n");
+            }
+            else if (!strcmp(cmd, ":file") || !strcmp(cmd, ":f")) {
+                printf("File request\n");
+            }
+            else if (!joined_group) {
+                sprintf(buffer, "[System] You are not in a group");
+                send_user(buffer, cli->uid);
+                // str_trim_lf(buffer, strlen(buffer));
+            }
+            else {
+                cmd[strlen(cmd)] = ' ';
+                printf("%s\n", buffer);
+                send_group(buffer, cli->uid, current_group);
+                printf("[System] Group: %s, Message: %s\n", current_group, buffer);
+                str_trim_lf(buffer, strlen(buffer));
+            }
         }
         else {
             printf("[System] User %s (uid: %d) disconnected\n", cli->name, cli->uid);
-            sprintf(buffer, "-- %s has left the chat --\n", cli->name);
-            send_message(buffer, cli->uid, cli->group_id, 0);
+            sprintf(buffer, "-- %s has left the chat --", cli->name);
+            send_group(buffer, cli->uid, current_group);
             leave_flag = 1;
         }
 
@@ -463,10 +568,9 @@ void* handle_client(void* arg) {
     }
     // Close connection
     close(cli->sockfd);
-    // If member of a group, remove member from group 
-    if (joined)
-        leave_group(cli->group_id, cli->uid);
-    // Remove member from queue
+    // Remove member from group 
+    leave_group(cli);
+    // Remove member from server
     leave_server(cli->uid);
     free(cli);
     pthread_detach(pthread_self());
