@@ -71,8 +71,11 @@ void send_msg_handler() {
             printf("- :s | :switch <id>           - Switch to room with <id>\n");
             printf("- :l | :leave                 - Temporary leave room and return to lobby\n");
             printf("- :r | :rename <name>         - Rename self to <name>\n");
+            printf("- :q | :quit                  - Quit current room and return to lobby\n");
             printf("- :f | :file <filename>       - Send file with <filename> to roommate\n");
             printf("- :i | :info                  - Print room info\n");
+            printf("===\n");
+            printf("Press Ctrl+C to quit Chatter\n");
         }
         else {
             time(&now);

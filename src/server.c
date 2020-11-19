@@ -335,6 +335,7 @@ char* create_group(char* password) {
 }
 
 // Join client CL in group GROUP_ID
+// @return 1 if success, 0 if wrong info, -1 if already joined 
 int join_group(char* group_id, char* password, client_t* cl) {
     pthread_mutex_lock(&clients_mutex);
     for (int i = 0; i < MAX_GROUPS; i++) {
@@ -342,20 +343,47 @@ int join_group(char* group_id, char* password, client_t* cl) {
             !strcmp(groups[i]->group_id, group_id) &&
             !strcmp(groups[i]->password, password)) {
 
-            // printf("Found group\n");
-            for (int j = 0; j < GROUP_MAX_CLIENTS; j++) {
-                if (!groups[i]->clients[j]) {
-                    groups[i]->clients[j] = cl;
-                    groups[i]->cli_count++;
-                    // printf("Joined group\n");
-                    for (int k = 0; k < CLIENTS_MAX_GROUP; k++) {
-                        if (cl->groups[k][0] == 0) {
-                            strcpy(cl->groups[k], groups[i]->group_id);
-                            strcpy(cl->active_group, group_id);
+
+            int idx = -1;
+            int cnt = 0;
+            int mem_cnt = groups[i]->cli_count;
+            // If group empty, add user to the 1st slot
+            if (mem_cnt == 0) {
+                idx = 0;
+            }
+            else {
+                // printf("Found group\n");
+                for (int j = 0; j < GROUP_MAX_CLIENTS; j++) {
+                    // Store the 1st empty slot index     
+                    if (!groups[i]->clients[j] && idx == -1) {
+                        idx = j;
+                    }
+                    if (cnt == mem_cnt)
+                        break;
+                    // If the user is already in the room, skip
+                    else {
+                        if (groups[i]->clients[j]->uid == cl->uid) {
                             pthread_mutex_unlock(&clients_mutex);
-                            return 1;
+                            return -1;
+                        }
+                        else {
+                            cnt++;
                         }
                     }
+                }
+            }
+            // Add user to the previously stored slot
+            groups[i]->clients[idx] = cl;
+            groups[i]->cli_count++;
+            // printf("Joined group\n");
+            // Add group to user's joined groups
+            for (int k = 0; k < CLIENTS_MAX_GROUP; k++) {
+                if (cl->groups[k][0] == 0) {
+                    strcpy(cl->groups[k], groups[i]->group_id);
+                    strcpy(cl->active_group, group_id); // Switch focus to newly joined group
+                    cl->gr_count++;
+                    pthread_mutex_unlock(&clients_mutex);
+                    return 1;
                 }
             }
         }
@@ -366,8 +394,23 @@ int join_group(char* group_id, char* password, client_t* cl) {
 }
 
 // Switch focused group of CL to GROUP_ID
-void switch_group(char* group_id, client_t* cl) {
-    strcpy(cl->active_group, group_id);
+// @return 1 if success, 0 if wrong id
+int switch_group(char* group_id, client_t* cl) {
+    int cnt = 0;
+    for (int i = 0; i < CLIENTS_MAX_GROUP; i++) {
+        // If target room exists
+        if (!strcmp(cl->groups[i], group_id)) {
+            strcpy(cl->active_group, group_id);
+            return 1;
+        }
+        else if (cnt == cl->gr_count) {
+            break;
+        }
+        else {
+            cnt++;
+        }
+    }
+    return 0;
 }
 
 // Return to lobby, not active in any group/chat
@@ -376,20 +419,19 @@ void return_lobby(client_t* cl) {
 }
 
 // Remove client CL from all joined groups
-void leave_group(client_t* cl) {
+void leave_all_groups(client_t* cl) {
     pthread_mutex_lock(&clients_mutex);
 
     for (int i = 0; i < cl->gr_count; i++) {
         // Remove member from room
         if (cl->groups[i][0] != 0) {
             group_t* gr = get_group(cl->groups[i]);
-            printf("Quit: %s\n", cl->groups[i]);
+            // printf("Quit: %s\n", cl->groups[i]);
             for (int j = 0; j < gr->cli_count; j++) {
                 if (gr->clients[j]) {
-                    if (gr->clients[j]->uid == uid) {
+                    if (gr->clients[j]->uid == cl->uid) {
                         gr->clients[j] = NULL;
                         gr->cli_count--;
-                        cl->gr_count--;
                         break;
                     }
                 }
@@ -407,6 +449,81 @@ void leave_group(client_t* cl) {
 
     pthread_mutex_unlock(&clients_mutex);
 }
+
+void info_group(char* group_id, int uid) {
+    group_t* gr = get_group(group_id);
+
+    // Allocate size for the message
+    // Size = General info size + padding + (name size + padding) * mem count
+    int size = 77 + PASSWORD_LEN + GROUP_ID_LEN + (NAME_LEN + 8) * gr->cli_count;
+    char* buffer = (char*)malloc(size);
+
+    sprintf(buffer, "[SYSTEM] Room ID: %s\n===\nRoom info:\n- Password: %s\n- Members: %d\n===\nMembers info:\n", group_id, gr->password, gr->cli_count);
+    // printf("%ld\n", strlen(buffer));
+
+    int cnt = 0;
+    int mem_cnt = gr->cli_count;
+    char* user_info = (char*)malloc(NAME_LEN + 7);
+    for (int i = 0; i < GROUP_MAX_CLIENTS; i++) {
+        if (gr->clients[i]) {
+            cnt++;
+            sprintf(user_info, "- %d. %s\n", gr->clients[i]->uid, gr->clients[i]->name);
+            // send_user(buffer, uid);
+            strcat(buffer, user_info);
+        }
+        else if (cnt == mem_cnt) {
+            break;
+        }
+    }
+    send_user(buffer, uid);
+    free(user_info);
+    free(buffer);
+    /*
+       [SYSTEM] Room ID: === Room info: - Password: - Members: 100 === Members info:
+    */
+}
+
+// Leave a specific room
+// @return 1 if success, 0 if room doesn't exist
+int leave_group(char* group_id, client_t* cl) {
+    pthread_mutex_lock(&clients_mutex);
+
+    group_t* gr = get_group(group_id);
+
+    if (!gr) {
+        pthread_mutex_unlock(&clients_mutex);
+        return 0;
+    }
+
+    int cnt = 0;
+    for (int j = 0; j < GROUP_MAX_CLIENTS; j++) {
+        if (cnt == gr->cli_count) {
+            break;
+        }
+        if (gr->clients[j]) {
+            cnt++;
+            if (gr->clients[j]->uid == cl->uid) {
+                gr->clients[j] = NULL;
+                gr->cli_count--;
+                cl->gr_count--;
+                strcpy(cl->active_group, "");
+                break;
+            }
+        }
+    }
+    // Remove room if empty
+    if (gr->cli_count == 0) {
+        printf("[SYSTEM] Room ID %s removed\n", gr->group_id);
+        groups[gr->idx] = NULL;
+        gr_count--;
+
+        free(gr);
+    }
+
+    pthread_mutex_unlock(&clients_mutex);
+    return 1;
+}
+
 
 void* handle_client(void* arg) {
     char buffer[BUFFER_SZ];
@@ -457,8 +574,6 @@ void* handle_client(void* arg) {
 
                     sprintf(buffer, "[SYSTEM] Group created and joined. Group ID: %s", result);
                     send_user(buffer, cli->uid);
-
-                    strcpy(cli->active_group, result);
                 }
                 else {
                     sprintf(buffer, "[SYSTEM] Please provide group password");
@@ -469,37 +584,63 @@ void* handle_client(void* arg) {
             // :j - Join room
             else if (!strcmp(buffer, ":join") || !strcmp(buffer, ":j")) {
                 param = strtok(NULL, " \n");
+                if (param == NULL) {
+                    sprintf(buffer, "[SYSTEM] Not enough info provided");
+                    send_user(buffer, cli->uid);
+                    continue;
+                }
                 // printf("Join request to %s\n", param);
                 char* pass = strtok(NULL, " \n");
-                char* gid = (char*)malloc(strlen(param) + 1);
+                char* gid = (char*)malloc(GROUP_ID_LEN + 1);
 
                 strcpy(gid, param);
 
-                if (pass != NULL && join_group(param, pass, cli)) {
-                    sprintf(buffer, "[SYSTEM] Joined group: %s", gid);
-                    send_user(buffer, cli->uid);
-                    sprintf(buffer, "[SYSTEM] %s joined in the chat", name);
-                    send_other(buffer, cli->uid, gid);
+                if (gid != NULL && pass != NULL) {
+                    int res = join_group(gid, pass, cli);
+                    if (res == 0) {
+                        sprintf(buffer, "[SYSTEM] Invalid room info");
+                        send_user(buffer, cli->uid);
+                    }
+                    else if (res == -1) {
+                        sprintf(buffer, "[SYSTEM] You already joined this room");
+                        send_user(buffer, cli->uid);
+                    }
+                    else if (res == 1) {
+                        sprintf(buffer, "[SYSTEM] Joined group: %s", gid);
+                        send_user(buffer, cli->uid);
+                        sprintf(buffer, "[SYSTEM] %s joined in the chat", name);
+                        send_other(buffer, cli->uid, gid);
+                    }
                 }
                 else {
-                    sprintf(buffer, "[SYSTEM] Cannot join group");
+                    sprintf(buffer, "[SYSTEM] Not enough info provided");
                     send_user(buffer, cli->uid);
                 }
-                strcpy(cli->active_group, gid);
                 free(gid);
             }
             // :s - Switch room
             else if (!strcmp(buffer, ":switch") || !strcmp(buffer, ":s")) {
-                // printf("Someone requested to join\n");
                 param = strtok(NULL, " \n");
-                printf("Switch request to %s\n", param);
-                if (!strcmp(param, cli->active_group)) {
-                    sprintf(buffer, "[SYSTEM] You are already in this group");
-                    send_user(buffer, cli->uid);
+                // printf("Switch request to %s\n", param);
+                if (param != NULL) {
+                    if (!strcmp(param, cli->active_group)) {
+                        sprintf(buffer, "[SYSTEM] You are already in this group");
+                        send_user(buffer, cli->uid);
+                    }
+                    else {
+                        int res = switch_group(param, cli);
+                        if (res) {
+                            sprintf(buffer, "[SYSTEM] Switched to group %s", cli->active_group);
+                            send_user(buffer, cli->uid);
+                        }
+                        else {
+                            sprintf(buffer, "[SYSTEM] Invalid group id");
+                            send_user(buffer, cli->uid);
+                        }
+                    }
                 }
                 else {
-                    switch_group(param, cli);
-                    sprintf(buffer, "[SYSTEM] switched to group %s", cli->active_group);
+                    sprintf(buffer, "[SYSTEM] Not enough info provided");
                     send_user(buffer, cli->uid);
                 }
             }
@@ -517,13 +658,38 @@ void* handle_client(void* arg) {
             // :r - Rename
             else if (!strcmp(cmd, ":rename") || !strcmp(cmd, ":r")) {
                 param = strtok(NULL, " \n");
-                char* name = (char*)malloc(NAME_LEN);
-                strcpy(name, param);
-                // printf("Rename request to %s\n", param);
-                sprintf(buffer, "[SYSTEM] Renamed %s to %s", cli->name, name);
-                strcpy(cli->name, param);
-                send_group(buffer, cli->active_group);
-                free(name);
+                if (param != NULL) {
+                    char* name = (char*)malloc(NAME_LEN);
+                    strcpy(name, param);
+                    // printf("Rename request to %s\n", param);
+                    sprintf(buffer, "[SYSTEM] Renamed %s to %s", cli->name, name);
+                    strcpy(cli->name, param);
+                    send_group(buffer, cli->active_group);
+                    free(name);
+                }
+                else {
+                    sprintf(buffer, "[SYSTEM] Not enough info provided");
+                    send_user(buffer, cli->uid);
+                }
+            }
+            // :q - Quit room
+            else if (!strcmp(cmd, ":quit") || !strcmp(cmd, ":q")) {
+                if (!strcmp(cli->active_group, "")) {
+                    sprintf(buffer, "[SYSTEM] You are not in a group");
+                    send_user(buffer, cli->uid);
+                }
+                else {
+                    char* gid = (char*)malloc(NAME_LEN);
+                    strcpy(gid, cli->active_group);
+
+                    sprintf(buffer, "[SYSTEM] %s left the room", cli->name);
+                    send_other(buffer, cli->uid, gid);
+                    sprintf(buffer, "[SYSTEM] Left room %s", gid);
+                    send_user(buffer, cli->uid);
+
+                    leave_group(gid, cli);
+                    free(gid);
+                }
             }
             // :f - Send file
             else if (!strcmp(cmd, ":file") || !strcmp(cmd, ":f")) {
@@ -531,7 +697,14 @@ void* handle_client(void* arg) {
             }
             // :i - Get room info
             else if (!strcmp(cmd, ":info") || !strcmp(cmd, ":i")) {
-                printf("Info request\n");
+                // printf("Info request\n");
+                if (!strcmp(cli->active_group, "")) {
+                    sprintf(buffer, "[SYSTEM] You are not in a group");
+                    send_user(buffer, cli->uid);
+                }
+                else {
+                    info_group(cli->active_group, cli->uid);
+                }
             }
             // In case not in a group
             else if (!strcmp(cli->active_group, "")) {
@@ -557,7 +730,7 @@ void* handle_client(void* arg) {
         else {
             printf("[SYSTEM] User %s (uid: %d) disconnected\n", cli->name, cli->uid);
             if (strcmp(cli->active_group, "")) {
-                sprintf(buffer, "-- %s has left the chat --", cli->name);
+                sprintf(buffer, "[SYSTEM] %s disconnected", cli->name);
                 send_other(buffer, cli->uid, cli->active_group);
             }
             leave_flag = 1;
@@ -569,7 +742,7 @@ void* handle_client(void* arg) {
     close(cli->sockfd);
     // Remove member from group
     if (cli->gr_count)
-        leave_group(cli);
+        leave_all_groups(cli);
     // Remove member from server
     leave_server(cli->uid);
 

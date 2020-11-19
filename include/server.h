@@ -55,10 +55,11 @@ char* create_group(char* password);
 int check_group(char* group_id, char* password);
 group_t* get_group(char* group_id);
 int join_group(char* group_id, char* password, client_t* cl);
-void leave_group(client_t* cl);
-
+void leave_all_groups(client_t* cl);
+int leave_group(char* group_id, client_t* cl);
+int switch_group(char* group_id, client_t* cl);
 void return_lobby(client_t* cl);
-void switch_group(char* group_id, client_t* cl);
+void info_group(char* group_id, int uid);
 
 // ===
 // MESSAGING FUNCTION ===
