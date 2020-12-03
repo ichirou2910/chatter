@@ -324,7 +324,7 @@ char* create_group(char* password) {
             groups[i] = gr;
             gr->idx = i;
             gr_count++;
-            printf("Created new group: %s - %s\n", id, password);
+            printf("[SYSTEM] Created new group: %s - %s\n", id, password);
             pthread_mutex_unlock(&clients_mutex);
             return id;
         }
@@ -657,19 +657,25 @@ void* handle_client(void* arg) {
             }
             // :r - Rename
             else if (!strcmp(cmd, ":rename") || !strcmp(cmd, ":r")) {
-                param = strtok(NULL, " \n");
-                if (param != NULL) {
-                    char* name = (char*)malloc(NAME_LEN);
-                    strcpy(name, param);
-                    // printf("Rename request to %s\n", param);
-                    sprintf(buffer, "[SYSTEM] Renamed %s to %s", cli->name, name);
-                    strcpy(cli->name, param);
-                    send_group(buffer, cli->active_group);
-                    free(name);
+                if (!strcmp(cli->active_group, "")) {
+                    sprintf(buffer, "[SYSTEM] You are not in a group");
+                    send_user(buffer, cli->uid);
                 }
                 else {
-                    sprintf(buffer, "[SYSTEM] Not enough info provided");
-                    send_user(buffer, cli->uid);
+                    param = strtok(NULL, " \n");
+                    if (param != NULL) {
+                        char* name = (char*)malloc(NAME_LEN);
+                        strcpy(name, param);
+                        // printf("Rename request to %s\n", param);
+                        sprintf(buffer, "[SYSTEM] Renamed %s to %s", cli->name, name);
+                        strcpy(cli->name, name);
+                        send_group(buffer, cli->active_group);
+                        free(name);
+                    }
+                    else {
+                        sprintf(buffer, "[SYSTEM] Not enough info provided");
+                        send_user(buffer, cli->uid);
+                    }
                 }
             }
             // :q - Quit room
@@ -716,8 +722,6 @@ void* handle_client(void* arg) {
             else {
                 cmd[strlen(cmd)] = ' ';
                 char* msg = (char*)malloc(BUFFER_SZ + NAME_LEN + 3);
-                // printf("%s\n", buffer);
-                // send_other(buffer, cli->uid, cli->active_group);
                 sprintf(msg, "[%s] %s", cli->name, buffer);
                 send_other(msg, cli->uid, cli->active_group);
 
