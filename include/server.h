@@ -22,6 +22,7 @@ typedef struct {
     char name[NAME_LEN];                    // Username
     char groups[CLIENTS_MAX_GROUP][GROUP_ID_LEN];        // Joined groups
     char active_group[GROUP_ID_LEN];        // Current active group
+    char active_voice_group[GROUP_ID_LEN];  // Current voicechatting group
     int gr_count;                           // Room count
 } client_t;
 

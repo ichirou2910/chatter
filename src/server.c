@@ -697,6 +697,35 @@ void* handle_client(void* arg) {
                     free(gid);
                 }
             }
+            // :vq - quit voice chat
+            else if (!strcmp(cmd, ":voicequit") || !strcmp(cmd, ":vq")) {
+                if (!strcmp(cli->active_group, "")) {
+                    sprintf(buffer, "[SYSTEM] You are not in a group");
+                    send_user(buffer, cli->uid);
+                }
+                else if (!strcmp(cli->active_voice_group, "")) {
+                    sprintf(buffer, "[SYSTEM] You have not joined voice chat");
+                    send_user(buffer, cli->uid);
+                }
+                else {
+                    printf("Quit voice chat request\n");
+                }
+            }
+            // :v - voice chat
+            else if (!strcmp(cmd, ":voice") || !strcmp(cmd, ":v")) {
+                if (!strcmp(cli->active_group, "")) {
+                    sprintf(buffer, "[SYSTEM] You are not in a group");
+                    send_user(buffer, cli->uid);
+                }
+                else if (strcmp(cli->active_voice_group, "")) {
+                    sprintf(buffer, "[SYSTEM] You can only join voice chat with one room");
+                    send_user(buffer, cli->uid);
+                }
+                else {
+                    printf("Voice chat request\n");
+                    // Create a UDP connect on another thread
+                }
+            }
             // :f - Send file
             else if (!strcmp(cmd, ":file") || !strcmp(cmd, ":f")) {
                 printf("File request\n");
