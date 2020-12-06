@@ -1,4 +1,5 @@
 #include "server.h"
+#include "audio.h"
 
 #include <sys/socket.h>
 #include <arpa/inet.h>
@@ -524,6 +525,30 @@ int leave_group(char* group_id, client_t* cl) {
     return 1;
 }
 
+void* voice_recv(void* arg) {
+    client_t* cli = (client_t*)arg;
+}
+
+void* voice_send(void* arg) {
+    snd_pcm_t* hWaveIn = (snd_pcm_t*)arg;
+    int result;
+    short buffer = (short*)calloc(512, 1);
+
+    snd_pcm_prepare(hWaveIn);
+    while (1) {
+        result = snd_pcm_readi(hWaveIn, buffer, 128);
+
+        if (result < 0) {
+            printf("Error %d, errno: %d\n", -result, errno);
+            result = snd_pcm_recover(hWaveIn, result, 0);
+            printf("overload\n");
+        }
+        if (result < 0) {
+            printf("snd_pcm_... failed\n");
+            continue;
+        }
+    }
+}
 
 void* handle_client(void* arg) {
     char buffer[BUFFER_SZ];
@@ -724,6 +749,54 @@ void* handle_client(void* arg) {
                 else {
                     printf("Voice chat request\n");
                     // Create a UDP connect on another thread
+                    // Setup UDP
+                    snd_pcm_t* hWaveIn;
+                    int result;
+
+                    int sent;
+                    short* buffer;
+                    double volume = 1;
+
+                    int connfd = -1;
+                    struct sockaddr_in voice_addr = { 0 };
+
+                    const char* audioTarget = "default";
+                    int port = VOICE_PORT;
+                    int audioSamplePerSec = 48000;
+                    int audioChannels = 2;
+                    int audioBytesPerSample = 2;
+                    int audioNumBuffer = 4;
+
+                    int bufferChunk = 128;
+                    int bufferSize = bufferChunk * audioChannels * audioBytesPerSample;
+
+                    voice_addr.sin_family = AF_INET;
+                    voice_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+                    voice_addr.sin_port = htons(port);
+                    if ((connfd = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {
+                        printf("Error socket\n");
+                        // return;
+                    }
+
+                    result = snd_pcm_open(&hWaveIn, audioTarget, SND_PCM_STREAM_CAPTURE, 0);
+                    setHwParams(hWaveIn, audioChannels, audioBytesPerSample, audioSamplePerSec, bufferChunk, audioNumBuffer);
+                    snd_pcm_prepare(hWaveIn);
+                    buffer = (short*)calloc(bufferSize, 1);
+
+                    // Threads
+                    // Thread for sending voice
+                    pthread_t send_voice_thread;
+                    if (pthread_create(&send_voice_thread, NULL, &voice_send, (void*)arg) != 0) {
+                        printf("ERROR: pthread\n");
+                        return EXIT_FAILURE;
+                    }
+
+                    // Thread for receiving voice
+                    pthread_t recv_voice_thread;
+                    if (pthread_create(&recv_voice_thread, NULL, &voice_recv, (void*)cli) != 0) {
+                        printf("ERROR: pthread\n");
+                        return EXIT_FAILURE;
+                    }
                 }
             }
             // :f - Send file

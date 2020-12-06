@@ -4,6 +4,7 @@
 #include <netinet/in.h>
 
 #define PORT 9000
+#define VOICE_PORT 9001
 
 #define GROUP_MAX_CLIENTS 100
 #define GROUP_MAX_MESSAGES 1000
@@ -71,5 +72,7 @@ void send_other(char* s, int uid, char* group_id);
 // ===
 
 void* handle_client(void* arg);
+void* voice_recv(void* arg);
+void* voice_send(void* arg);
 
 #endif

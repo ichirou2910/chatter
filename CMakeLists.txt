@@ -4,6 +4,8 @@ project(chatter VERSION 0.1.0)
 find_package(PkgConfig REQUIRED)
 PKG_CHECK_MODULES(GTK REQUIRED gtk+-3.0)
 
+find_package(ALSA REQUIRED)
+
 include_directories(${GTK_INCLUDE_DIRS})
 link_directories(${GTK_LIBRARY_DIRS})
 
@@ -33,6 +35,11 @@ add_executable(client src/client.c)
 add_executable(server src/server.c)
 target_link_libraries(client ${GTK_LIBRARIES})
 target_link_libraries(server ${GTK_LIBRARIES})
+if (ALSA_FOUND)                                                
+    include_directories(${ALSA_INCLUDE_DIRS})                  
+    target_link_libraries (client ${ALSA_LIBRARIES})      
+    target_link_libraries (server ${ALSA_LIBRARIES})      
+endif(ALSA_FOUND) 
 
 set(CPACK_PROJECT_NAME ${PROJECT_NAME})
 set(CPACK_PROJECT_VERSION ${PROJECT_VERSION})
