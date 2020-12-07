@@ -66,6 +66,7 @@ void info_group(char* group_id, int uid);
 void send_group(char* s, char* group_id);
 void send_user(char* s, int uid);
 void send_other(char* s, int uid, char* group_id);
+void send_file(char* path, int uid, char* group_id);
 
 // ===
 

@@ -1,6 +1,9 @@
 #include "server.h"
 
 #include <sys/socket.h>
+#include <sys/sendfile.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <arpa/inet.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,8 +12,8 @@
 #include <string.h>
 #include <pthread.h>
 #include <time.h>
-#include <sys/types.h>
 #include <signal.h>
+#include <fcntl.h>
 
 static _Atomic unsigned int cli_count = 0;
 static _Atomic unsigned int gr_count = 0;
@@ -246,6 +249,76 @@ void send_other(char* s, int uid, char* group_id) {
             }
         }
     }
+
+    pthread_mutex_unlock(&clients_mutex);
+}
+
+// Send a file of PATH to the group
+void send_file(char* path, int uid, char* group_id) {
+    pthread_mutex_lock(&clients_mutex);
+
+    // Temporary file name, will implement proper file name extractor
+    char* filename = "usagyuun.png";
+
+    // Cache receiver
+    group_t* gr = get_group(group_id);
+    if (!gr) {
+        printf("An error occured\n");
+        return;
+    }
+
+    int count = gr->cli_count;
+    int idx[count - 1];
+    int idx_cnt = 0;
+    for (int i = 0; i < GROUP_MAX_CLIENTS; i++) {
+        if (count == 0) {
+            break;
+        }
+        if (gr->clients[i]) {
+            count--;
+            if (gr->clients[i]->uid != uid) {
+                idx[idx_cnt++] = gr->clients[i]->sockfd;
+            }
+        }
+    }
+
+    // Initialize
+    int fd = open(path, O_RDONLY);
+    if (!fd) {
+        printf("File not found\n");
+        pthread_mutex_unlock(&clients_mutex);
+        return;
+    }
+    struct stat file_stat;
+    fstat(fd, &file_stat);
+    char fileBuf[BUFFER_SZ];
+    memset(fileBuf, 0x0, BUFFER_SZ);
+    int bufLen = 0;
+
+    // Notify of file transmission
+    char msg[15 + strlen(filename) + 1];
+    for (int i = 0; i < gr->cli_count - 1; i++) {
+        sprintf(msg, "[SYSTEM] File: %s", filename);
+        write(idx[i], msg, strlen(msg));
+        // sprintf(msg, "%ld", file_stat.st_size);
+        // write(idx[i], msg, strlen(msg));
+    }
+
+    // Actually send file
+    // int pck_cnt = 0;
+    while ((bufLen = read(fd, fileBuf, BUFFER_SZ)) > 0) {
+        // printf("%d - Current bufLen: %d\n", pck_cnt++, bufLen);
+        for (int i = 0; i < gr->cli_count - 1; i++) {
+            write(idx[i], fileBuf, bufLen);
+        }
+        if (bufLen == 0 || bufLen != BUFFER_SZ) {
+            break;
+        }
+        memset(fileBuf, 0x0, BUFFER_SZ);
+    }
+    printf("File sent\n");
+    close(fd);
+    printf("File closed\n");
 
     pthread_mutex_unlock(&clients_mutex);
 }
@@ -542,6 +615,7 @@ void* handle_client(void* arg) {
     }
     else {
         strcpy(cli->name, name);
+        strcpy(cli->active_group, "");
         cli->gr_count = 0;
         printf("[SYSTEM] User %s (uid: %d) joined the server\n", cli->name, cli->uid);
     }
@@ -699,7 +773,22 @@ void* handle_client(void* arg) {
             }
             // :f - Send file
             else if (!strcmp(cmd, ":file") || !strcmp(cmd, ":f")) {
-                printf("File request\n");
+                if (!strcmp(cli->active_group, "")) {
+                    sprintf(buffer, "[SYSTEM] You are not in a group");
+                    send_user(buffer, cli->uid);
+                }
+                else {
+                    // For now, use a static file path
+                    // Later we will get file path from GTK File Selection
+                    char* home = getenv("HOME");
+                    char* path = "/Random/usagyuun.png";
+                    char* fullpath = malloc(strlen(home) + strlen(path) + 1);
+                    strcpy(fullpath, home);
+                    strcat(fullpath, path);
+
+                    // Send file
+                    send_file(fullpath, cli->uid, cli->active_group);
+                }
             }
             // :i - Get room info
             else if (!strcmp(cmd, ":info") || !strcmp(cmd, ":i")) {
