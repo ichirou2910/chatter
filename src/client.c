@@ -1,7 +1,7 @@
 #include "client.h"
 
-#include <sys/socket.h>
-#include <netinet/in.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <arpa/inet.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,9 +9,9 @@
 #include <errno.h>
 #include <string.h>
 #include <pthread.h>
-#include <sys/types.h>
 #include <signal.h>
 #include <time.h>
+#include <fcntl.h>
 
 volatile sig_atomic_t flag = 0;
 int sockfd = 0;
@@ -42,16 +42,55 @@ void recv_msg_handler() {
 
     while (1) {
         int receive = recv(sockfd, message, BUFFER_SZ, 0);
-
-        if (receive > 0) {
+        if (!strncmp(message, "[SYSTEM] File: ", 15)) {
+            // Print file notification
             time(&now);
             local = localtime(&now);
             printf("%02d:%02d ~ %s\n", local->tm_hour, local->tm_min, message);
+            // get the file name only
+            // memmove(message, message + 15, strlen(message) - 15);
+            // Initialize
+            int fd = open(message + 15, O_WRONLY | O_CREAT | O_EXCL, 0700);
+            char fileBuf[BUFFER_SZ];
+            memset(fileBuf, 0x0, BUFFER_SZ);
+            int bufLen = 0;
+            // int pck_cnt = 0;
+
+            // Get file size
+            // char tmpBuf[BUFFER_SZ];
+            // recv(sockfd, tmpBuf, BUFFER_SZ, 0);
+            // long file_size = atol(tmpBuf);
+            // printf("File size: %ld\n", file_size);
+
+            while ((bufLen = read(sockfd, fileBuf, BUFFER_SZ)) > 0) {
+                int write_sz = write(fd, fileBuf, bufLen);
+                memset(fileBuf, 0x0, BUFFER_SZ);
+                // file_size -= (long)bufLen;
+                // printf("%d - Data left: %ld\n", pck_cnt++, file_size);
+                if (write_sz < bufLen) {
+                    break;
+                }
+                if (bufLen == 0 || bufLen != BUFFER_SZ) {
+                    break;
+                }
+            }
+            close(fd);
+            printf("[SYSTEM] File received\n");
             str_overwrite_stdout();
+            // continue;
         }
-        else if (receive == 0) {
-            break;
+        else {
+            if (receive > 0) {
+                time(&now);
+                local = localtime(&now);
+                printf("%02d:%02d ~ %s\n", local->tm_hour, local->tm_min, message);
+                str_overwrite_stdout();
+            }
+            else if (receive == 0) {
+                break;
+            }
         }
+
         bzero(message, BUFFER_SZ);
     }
 }

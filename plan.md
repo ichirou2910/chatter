@@ -1,10 +1,18 @@
 # Chatter
 
+## Progress
+
+- [x] Chat function
+- [x] Create room
+- [x] Join room
+- [x] Switch room
+
 ## Plan
 
 -   There will be one server only
 -   All clients will connect to the above server
 -   Server will handle grouping and messages between groups
+-   One client can join many servers
 -   GUI for client side
 -   File sending
 
@@ -14,7 +22,6 @@
 
 ## Things not planned
 
--   One user, many rooms
 -   GUI for server side
 
 ## Details
@@ -29,7 +36,8 @@
 
     -   socket stuff
     -   `name`: username
-    -   `group_id`: room
+    -   `groups`: joined rooms
+    -   `active_group`: focused room
 
 -   **`server`**: the one behind all
     -   socket stuff
@@ -61,6 +69,18 @@
     -   Input box
     -   File attachment button
 
+## Console
+
+-   `:c <password>`: Create room
+-   `:j <id> <password>`: Join room with password
+-   `:s <id>`: Switch focus to room
+-   `:h`: Print help
+-   `:i`: Print room info
+-   `:u`: Print roommates info
+-   `:f`: Send file
+-   `<other>`: Send message
+
 ## How things should work
 
--   An user will only send message to users of the same room
+-   User will only send message to users of the same room
+-   User can create, join or switch between rooms
