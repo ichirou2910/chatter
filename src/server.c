@@ -14,6 +14,7 @@
 #include <time.h>
 #include <signal.h>
 #include <fcntl.h>
+#include <libgen.h>
 
 static _Atomic unsigned int cli_count = 0;
 static _Atomic unsigned int gr_count = 0;
@@ -258,7 +259,7 @@ void send_file(char* path, int uid, char* group_id) {
     pthread_mutex_lock(&clients_mutex);
 
     // Temporary file name, will implement proper file name extractor
-    char* filename = "usagyuun.png";
+    char* filename = basename(path);
 
     // Cache receiver
     group_t* gr = get_group(group_id);
@@ -305,9 +306,9 @@ void send_file(char* path, int uid, char* group_id) {
     }
 
     // Actually send file
-    // int pck_cnt = 0;
+    int pck_cnt = 0;
     while ((bufLen = read(fd, fileBuf, BUFFER_SZ)) > 0) {
-        // printf("%d - Current bufLen: %d\n", pck_cnt++, bufLen);
+        printf("%d - Current bufLen: %d\n", pck_cnt++, bufLen);
         for (int i = 0; i < gr->cli_count - 1; i++) {
             write(idx[i], fileBuf, bufLen);
         }
@@ -665,8 +666,8 @@ void* handle_client(void* arg) {
                 // printf("Someone requested to join\n");
                 param = strtok(NULL, " \n");
                 if (param != NULL) {
-                    char *pass = strtok(NULL, " \n");
-                    char *name = (char*)malloc(NAME_LEN + 1);
+                    char* pass = strtok(NULL, " \n");
+                    char* name = (char*)malloc(NAME_LEN + 1);
                     strcpy(name, param);
 
                     char* result = create_group(name, pass);
@@ -768,9 +769,9 @@ void* handle_client(void* arg) {
                     // printf("Rename request to %s\n", param);
                     sprintf(buffer, "[SYSTEM] Renamed %s to %s", cli->name, name);
                     strcpy(cli->name, name);
-                    if(!strcmp(cli->active_group, ""))
+                    if (!strcmp(cli->active_group, ""))
                         send_user(buffer, cli->uid);
-                    else 
+                    else
                         send_group(buffer, cli->active_group);
                     free(name);
                 }
@@ -806,10 +807,11 @@ void* handle_client(void* arg) {
                 }
                 else {
                     //Get file's path
-                    param = strtok(NULL, " \n");
-                    printf("%s\n", param);
+                    cmd[strlen(cmd)] = ' ';
+                    // param = strtok(NULL, " \n");
+                    printf("%s\n", cmd);
                     // Send file
-                    send_file(param, cli->uid, cli->active_group);
+                    send_file(cmd + 3, cli->uid, cli->active_group);
                 }
             }
             // :i - Get room info
