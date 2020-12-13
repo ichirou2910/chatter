@@ -10,6 +10,11 @@
   <object class="GtkImage">
     <property name="visible">True</property>
     <property name="can_focus">False</property>
+    <property name="stock">gtk-justify-fill</property>
+  </object>
+  <object class="GtkImage">
+    <property name="visible">True</property>
+    <property name="can_focus">False</property>
     <property name="stock">gtk-jump-to</property>
   </object>
   <object class="GtkImage">
@@ -150,6 +155,7 @@
     </child>
   </object>
   <object class="GtkTextBuffer" id="help_buf"/>
+  <object class="GtkTextBuffer" id="list_buffer"/>
   <object class="GtkTextBuffer" id="message_buffer">
     <property name="text" translatable="yes">Type something here...</property>
   </object>
@@ -457,6 +463,16 @@
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
                     <child>
+                      <object class="GtkImageMenuItem" id="list">
+                        <property name="label" translatable="yes">List</property>
+                        <property name="visible">True</property>
+                        <property name="can_focus">False</property>
+                        <property name="image">__glade_unnamed_12</property>
+                        <property name="use_stock">False</property>
+                        <signal name="activate" handler="on_list_activate" object="list_main" swapped="no"/>
+                      </object>
+                    </child>
+                    <child>
                       <object class="GtkImageMenuItem" id="create_btn">
                         <property name="label" translatable="yes">Create</property>
                         <property name="visible">True</property>
@@ -591,8 +607,8 @@
   <object class="GtkWindow" id="help_main">
     <property name="can_focus">False</property>
     <property name="title" translatable="yes">Help</property>
-    <property name="default_width">500</property>
-    <property name="default_height">400</property>
+    <property name="default_width">800</property>
+    <property name="default_height">300</property>
     <property name="transient_for">client_main</property>
     <child>
       <placeholder/>
@@ -730,6 +746,30 @@
             <property name="fill">True</property>
             <property name="position">1</property>
           </packing>
+        </child>
+      </object>
+    </child>
+  </object>
+  <object class="GtkWindow" id="list_main">
+    <property name="can_focus">False</property>
+    <property name="title" translatable="yes">Rooms</property>
+    <property name="default_width">200</property>
+    <property name="default_height">200</property>
+    <property name="transient_for">client_main</property>
+    <child>
+      <placeholder/>
+    </child>
+    <child>
+      <object class="GtkScrolledWindow">
+        <property name="visible">True</property>
+        <property name="can_focus">True</property>
+        <property name="shadow_type">in</property>
+        <child>
+          <object class="GtkTextView" id="list_view">
+            <property name="visible">True</property>
+            <property name="can_focus">True</property>
+            <property name="buffer">list_buffer</property>
+          </object>
         </child>
       </object>
     </child>
