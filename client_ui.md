@@ -14,3 +14,5 @@
 - Implement the join room                                           [X]
 - Implement the file transfer                                       [-]
 - Implement the create room                                         []
+- Implement the switch room                                         []
+- Implement the quit room                                           []
