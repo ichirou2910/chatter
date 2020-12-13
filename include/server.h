@@ -21,6 +21,7 @@ typedef struct {
 
     char name[NAME_LEN];                    // Username
     char groups[CLIENTS_MAX_GROUP][GROUP_ID_LEN];        // Joined groups
+    char groups_name[CLIENTS_MAX_GROUP][NAME_LEN];      // Name of groups
     char active_group[GROUP_ID_LEN];        // Current active group
     int gr_count;                           // Room count
 } client_t;

@@ -454,6 +454,7 @@ int join_group(char* group_id, char* password, client_t* cl) {
             for (int k = 0; k < CLIENTS_MAX_GROUP; k++) {
                 if (cl->groups[k][0] == 0) {
                     strcpy(cl->groups[k], groups[i]->group_id);
+                    strcpy(cl->groups_name[k], groups[i]->name);
                     strcpy(cl->active_group, group_id); // Switch focus to newly joined group
                     cl->gr_count++;
                     pthread_mutex_unlock(&clients_mutex);
@@ -555,6 +556,26 @@ void info_group(char* group_id, int uid) {
     /*
        [SYSTEM] Room ID: === Room info: - Password: - Members: 100 === Members info:
     */
+}
+
+void list_room(int uid) {
+    char gr_list[BUFFER_SZ] = {};
+    char name[NAME_LEN] = {};
+
+    strcat(gr_list, "List of rooms:\n");
+    for (int i = 0; i < GROUP_MAX_CLIENTS * MAX_GROUPS; i++) {
+        // Prevent looping through all 100 clients
+        if (clients[i]->uid == uid) {
+            for(int j = 0; j < clients[i]->gr_count; j++) {
+                sprintf(name, "%s\n", clients[i]->groups_name[j]);
+                strcat(gr_list, name);
+                bzero(name, NAME_LEN);
+            }
+            break;
+        }
+    }
+
+    send_user(gr_list, uid);
 }
 
 // Leave a specific room
@@ -800,6 +821,17 @@ void* handle_client(void* arg) {
                 }
                 else {
                     info_group(cli->active_group, cli->uid);
+                }
+            }
+            // :li - Get list of rooms
+            else if(!strcmp(cmd, ":li")) {
+                // printf("Info request\n");
+                if (!strcmp(cli->active_group, "")) {
+                    sprintf(buffer, "[SYSTEM] You are not in a group");
+                    send_user(buffer, cli->uid);
+                }
+                else {
+                    list_room(cli->uid);
                 }
             }
             // In case not in a group

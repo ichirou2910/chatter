@@ -34,12 +34,14 @@ GtkWidget *chat_box;
 GtkWidget *room_input;
 GtkWidget *pass_input;
 GtkWidget *help_main;
+GtkWidget *list_main;
 
 GtkTextBuffer *room_buf;
 GtkTextBuffer *pass_buf;
 GtkTextBuffer *msg_buffer;
 GtkTextBuffer *chat_buffer;
 GtkTextBuffer *help_buf;
+GtkTextBuffer *list_buf;
 
 char send_buf[BUFFER_SZ] = {};
 
@@ -96,9 +98,11 @@ void recv_msg_handler() {
                 int write_sz = write(fd, fileBuf, bufLen);
                 memset(fileBuf, 0x0, BUFFER_SZ);
                 if (write_sz < bufLen) {
+                    g_print("File done\n");
                     break;
                 }
                 if (bufLen == 0 || bufLen != BUFFER_SZ) {
+                    g_print("File done 2\n");
                     break;
                 }
             }
@@ -112,6 +116,8 @@ void recv_msg_handler() {
 
             // continue;
 
+        } else if(!strncmp(message, "List of rooms:", 14)) {
+            gtk_text_buffer_set_text(list_buf, message, -1);
         } else {
             if (receive > 0) {
                 time(&now);
@@ -325,7 +331,15 @@ void on_confirm_switch_btn_clicked(GtkButton *button, GtkWidget *switch_dlg) {
 }
 
 void on_leave_btn_activate() {
-    sprintf(send_buf, ":l");
+    sprintf(send_buf, ":q");
+    send(sockfd, send_buf, strlen(send_buf), 0);
+    bzero(send_buf, BUFFER_SZ);
+}
+
+void on_list_activate(GtkMenuItem* list_itm, GtkWidget *list_main) {
+    gtk_widget_show(list_main);
+
+    sprintf(send_buf, ":li");
     send(sockfd, send_buf, strlen(send_buf), 0);
     bzero(send_buf, BUFFER_SZ);
 }
@@ -460,12 +474,14 @@ int main(int argc, char *argv[]) {
     room_input = GTK_WIDGET(gtk_builder_get_object(builder, "room_input"));
     pass_input = GTK_WIDGET(gtk_builder_get_object(builder, "pass_input"));
     help_main = GTK_WIDGET(gtk_builder_get_object(builder, "help_view"));
+    list_main = GTK_WIDGET(gtk_builder_get_object(builder, "list_view"));
 
     msg_buffer = gtk_text_view_get_buffer(msg_box);
     chat_buffer = gtk_text_view_get_buffer(chat_box);
     room_buf = gtk_text_view_get_buffer(room_input);
     pass_buf = gtk_text_view_get_buffer(pass_input);
     help_buf = gtk_text_view_get_buffer(help_main);
+    list_buf = gtk_text_view_get_buffer(list_main);
     
     g_object_unref(builder);
 
