@@ -22,6 +22,11 @@
     <property name="can_focus">False</property>
     <property name="stock">gtk-no</property>
   </object>
+  <object class="GtkImage">
+    <property name="visible">True</property>
+    <property name="can_focus">False</property>
+    <property name="stock">gtk-fullscreen</property>
+  </object>
   <object class="GtkTextBuffer" id="chat_buffer"/>
   <object class="GtkDialog" id="create_dlg">
     <property name="can_focus">False</property>
@@ -144,6 +149,7 @@
       </object>
     </child>
   </object>
+  <object class="GtkTextBuffer" id="help_buf"/>
   <object class="GtkTextBuffer" id="message_buffer">
     <property name="text" translatable="yes">Type something here...</property>
   </object>
@@ -495,11 +501,27 @@
               </object>
             </child>
             <child>
-              <object class="GtkMenuItem">
+              <object class="GtkMenuItem" id="help_itm">
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
                 <property name="label" translatable="yes">_Help</property>
                 <property name="use_underline">True</property>
+                <child type="submenu">
+                  <object class="GtkMenu">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <child>
+                      <object class="GtkImageMenuItem" id="command">
+                        <property name="label" translatable="yes">Commands</property>
+                        <property name="visible">True</property>
+                        <property name="can_focus">False</property>
+                        <property name="image">__glade_unnamed_9</property>
+                        <property name="use_stock">False</property>
+                        <signal name="activate" handler="on_command_activate" object="help_main" swapped="no"/>
+                      </object>
+                    </child>
+                  </object>
+                </child>
               </object>
             </child>
           </object>
@@ -562,6 +584,31 @@
         </child>
         <child>
           <placeholder/>
+        </child>
+      </object>
+    </child>
+  </object>
+  <object class="GtkWindow" id="help_main">
+    <property name="can_focus">False</property>
+    <property name="title" translatable="yes">Help</property>
+    <property name="default_width">800</property>
+    <property name="default_height">300</property>
+    <property name="transient_for">client_main</property>
+    <child>
+      <placeholder/>
+    </child>
+    <child>
+      <object class="GtkScrolledWindow">
+        <property name="visible">True</property>
+        <property name="can_focus">True</property>
+        <property name="shadow_type">in</property>
+        <child>
+          <object class="GtkTextView" id="help_view">
+            <property name="visible">True</property>
+            <property name="can_focus">True</property>
+            <property name="buffer">help_buf</property>
+            <property name="monospace">True</property>
+          </object>
         </child>
       </object>
     </child>

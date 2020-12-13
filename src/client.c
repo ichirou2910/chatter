@@ -33,15 +33,13 @@ GtkWidget *msg_box;
 GtkWidget *chat_box;
 GtkWidget *room_input;
 GtkWidget *pass_input;
-GtkWidget *room_create_input;
-GtkWidget *pass_create_input;
+GtkWidget *help_main;
 
 GtkTextBuffer *room_buf;
 GtkTextBuffer *pass_buf;
 GtkTextBuffer *msg_buffer;
 GtkTextBuffer *chat_buffer;
-GtkTextBuffer *room_create_buf;
-GtkTextBuffer *pass_create_buf;
+GtkTextBuffer *help_buf;
 
 char send_buf[BUFFER_SZ] = {};
 
@@ -332,6 +330,27 @@ void on_leave_btn_activate() {
     bzero(send_buf, BUFFER_SZ);
 }
 
+void on_command_activate(GtkMenuItem* help_itm, GtkWidget *help_window) {
+    gtk_widget_show(help_window);
+
+    char msg_content[1000] = {};
+
+    //Print help info
+    bzero(msg_content, 1000);
+    strcat(msg_content, "Chatter commands:\n");
+    strcat(msg_content, "- :c | :create <password>     - Create a new room with <password>\n");
+    strcat(msg_content, "- :j | :join <id> <password>  - Join a room with <id> & <password>\n");
+    strcat(msg_content, "- :s | :switch <id>           - Switch to room with <id>\n");
+    strcat(msg_content, "- :l | :leave                 - Temporary leave room and return to lobby\n");
+    strcat(msg_content, "- :r | :rename <name>         - Rename self to <name>\n");
+    strcat(msg_content, "- :q | :quit                  - Quit current room and return to lobby\n");
+    strcat(msg_content, "- :f | :file <filename>       - Send file with <filename> to roommate\n");
+    strcat(msg_content, "- :i | :info                  - Print room info\n");
+    strcat(msg_content, "===\n");
+
+    gtk_text_buffer_set_text(help_buf, msg_content, -1);
+}
+
 void on_change_name_btn_clicked(GtkButton *button, GtkTextBuffer *buffer) {
 
     //Get iter
@@ -440,15 +459,13 @@ int main(int argc, char *argv[]) {
     chat_box = GTK_WIDGET(gtk_builder_get_object(builder, "chat_view"));
     room_input = GTK_WIDGET(gtk_builder_get_object(builder, "room_input"));
     pass_input = GTK_WIDGET(gtk_builder_get_object(builder, "pass_input"));
-    // room_create_input = GTK_WIDGET(gtk_builder_get_object(builder, "room_name_buffer"));
-    // pass_create_input = GTK_WIDGET(gtk_builder_get_object(builder, "pass_room_buffer"));
+    help_main = GTK_WIDGET(gtk_builder_get_object(builder, "help_view"));
 
     msg_buffer = gtk_text_view_get_buffer(msg_box);
     chat_buffer = gtk_text_view_get_buffer(chat_box);
     room_buf = gtk_text_view_get_buffer(room_input);
     pass_buf = gtk_text_view_get_buffer(pass_input);
-    // room_create_buf = gtk_text_view_get_buffer(room_create_input);
-    // pass_create_buf = gtk_text_view_get_buffer(pass_create_input);
+    help_buf = gtk_text_view_get_buffer(help_main);
     
     g_object_unref(builder);
 

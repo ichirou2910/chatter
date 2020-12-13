@@ -15,5 +15,5 @@
 - Implement the file transfer                                       [-]
 - Implement the create room                                         [X]
 - Implement the switch room                                         [X]
-- Implement the leave room                                          []
-- Implement Help                                                    []
+- Implement the leave room                                          [X]
+- Implement Help                                                    [X]
