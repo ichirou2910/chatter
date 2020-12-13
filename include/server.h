@@ -30,6 +30,7 @@ typedef struct {
     client_t* clients[GROUP_MAX_CLIENTS];   // Room members
     char group_id[GROUP_ID_LEN];            // Room ID
     char password[PASSWORD_LEN];            // Room password
+    char name[NAME_LEN];                    // Group's name
     int mes_count;                          // Messages count
     int cli_count;                          // Member count
     int idx;                                // Room index
@@ -51,7 +52,7 @@ void leave_server(int uid);
 // ===
 // GROUP FUNCTIONS ===
 
-char* create_group(char* password);
+char* create_group(char* name, char* password);
 int check_group(char* group_id, char* password);
 group_t* get_group(char* group_id);
 int join_group(char* group_id, char* password, client_t* cl);

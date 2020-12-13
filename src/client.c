@@ -33,10 +33,16 @@ GtkWidget *msg_box;
 GtkWidget *chat_box;
 GtkWidget *room_input;
 GtkWidget *pass_input;
+GtkWidget *room_create_input;
+GtkWidget *pass_create_input;
+
 GtkTextBuffer *room_buf;
 GtkTextBuffer *pass_buf;
 GtkTextBuffer *msg_buffer;
 GtkTextBuffer *chat_buffer;
+GtkTextBuffer *room_create_buf;
+GtkTextBuffer *pass_create_buf;
+
 char send_buf[BUFFER_SZ] = {};
 
 struct sockaddr_in serv_addr;
@@ -250,13 +256,80 @@ void on_confirm_btn_clicked(GtkButton *button, GtkWidget *join_dlg) {
 
     //Get pass's input
     strcpy(pass, gtk_text_buffer_get_text(pass_buf, &start_pass, &end_pass, FALSE));
-
+    
     sprintf(send_buf, ":j %s %s", room, pass);
     send(sockfd, send_buf, strlen(send_buf), 0);
     bzero(send_buf, BUFFER_SZ);
 
+    //Clear buffer
+    gtk_text_buffer_delete(room_buf, &start_room, &end_room);
+    gtk_text_buffer_delete(pass_buf, &start_pass, &end_pass);
+
     //Close the widget
     gtk_widget_hide(join_dlg);
+}
+
+void on_confirm_create_btn_clicked(GtkButton *button, GtkWidget *create_dlg) {
+    char room[10] = {};
+    char pass[PASSWORD_LEN] = {};
+
+    //Get room's iter
+    GtkTextIter start_room;
+    GtkTextIter end_room;
+    gtk_text_buffer_get_start_iter (room_buf, &start_room);
+    gtk_text_buffer_get_end_iter (room_buf, &end_room);
+
+    //Get pass's iter
+    GtkTextIter start_pass;
+    GtkTextIter end_pass;
+    gtk_text_buffer_get_start_iter (pass_buf, &start_pass);
+    gtk_text_buffer_get_end_iter (pass_buf, &end_pass);
+
+    //Get room's input
+    strcpy(room, gtk_text_buffer_get_text(room_buf, &start_room, &end_room, FALSE));
+
+    //Get pass's input
+    strcpy(pass, gtk_text_buffer_get_text(pass_buf, &start_pass, &end_pass, FALSE));
+
+    sprintf(send_buf, ":c %s %s", room, pass);
+    send(sockfd, send_buf, strlen(send_buf), 0);
+    bzero(send_buf, BUFFER_SZ);
+
+    //Clear buffer
+    gtk_text_buffer_delete(room_buf, &start_room, &end_room);
+    gtk_text_buffer_delete(pass_buf, &start_pass, &end_pass);
+
+    //Close the widget
+    gtk_widget_hide(create_dlg);
+}
+
+void on_confirm_switch_btn_clicked(GtkButton *button, GtkWidget *switch_dlg) {
+    char room[10] = {};
+
+    //Get room's iter
+    GtkTextIter start_room;
+    GtkTextIter end_room;
+    gtk_text_buffer_get_start_iter (room_buf, &start_room);
+    gtk_text_buffer_get_end_iter (room_buf, &end_room);
+
+    //Get room's input
+    strcpy(room, gtk_text_buffer_get_text(room_buf, &start_room, &end_room, FALSE));
+
+    sprintf(send_buf, ":s %s", room);
+    send(sockfd, send_buf, strlen(send_buf), 0);
+    bzero(send_buf, BUFFER_SZ);
+
+    //Clear buffer
+    gtk_text_buffer_delete(room_buf, &start_room, &end_room);
+
+    //Close the widget
+    gtk_widget_hide(switch_dlg);
+}
+
+void on_leave_btn_activate() {
+    sprintf(send_buf, ":l");
+    send(sockfd, send_buf, strlen(send_buf), 0);
+    bzero(send_buf, BUFFER_SZ);
 }
 
 void on_change_name_btn_clicked(GtkButton *button, GtkTextBuffer *buffer) {
@@ -301,8 +374,8 @@ void on_connect_btn_clicked(GtkButton *button, GtkTextBuffer *buffer) {
         connect_once = 1;
         connected = 1;
     }
-
 }
+
 
 void on_msg_send_btn_clicked(GtkButton *button, GtkTextBuffer *buffer) {
 
@@ -314,6 +387,14 @@ void on_msg_send_btn_clicked(GtkButton *button, GtkTextBuffer *buffer) {
     }
 }
 
+void on_switch_btn_activate(GtkMenuItem *switch_itm, GtkWidget *switch_dlg) {
+    gtk_widget_show(switch_dlg);
+}
+
+void on_cancel_switch_btn_clicked(GtkButton *cancel, GtkWidget *switch_dlg) {
+    gtk_widget_hide(switch_dlg);
+}
+
 void on_join_btn_activate(GtkMenuItem *join, GtkWidget *join_dlg) {
     gtk_widget_show(join_dlg);
 }
@@ -322,9 +403,13 @@ void on_cancel_btn_clicked(GtkButton *cancel, GtkWidget *join_dlg) {
     gtk_widget_hide(join_dlg);
 }
 
-// void on_open_file_activate(GtkMenuItem *open, GtkWidget *file_dlg) {
-//     gtk_widget_show(file_dlg);
-// }
+void on_create_btn_activate(GtkMenuItem *create, GtkWidget *create_dlg) {
+    gtk_widget_show(create_dlg);
+}
+
+void on_cancel_create_btn_clicked(GtkButton *cancel, GtkWidget *create_dlg) {
+    gtk_widget_hide(create_dlg);
+}
 
 void on_client_main_destroy()
 {
@@ -350,16 +435,20 @@ int main(int argc, char *argv[]) {
 
     window = GTK_WIDGET(gtk_builder_get_object(builder, "client_main"));
     gtk_builder_connect_signals(builder, NULL);
-
+    
     msg_box = GTK_WIDGET(gtk_builder_get_object(builder, "msg_view"));
     chat_box = GTK_WIDGET(gtk_builder_get_object(builder, "chat_view"));
     room_input = GTK_WIDGET(gtk_builder_get_object(builder, "room_input"));
     pass_input = GTK_WIDGET(gtk_builder_get_object(builder, "pass_input"));
+    // room_create_input = GTK_WIDGET(gtk_builder_get_object(builder, "room_name_buffer"));
+    // pass_create_input = GTK_WIDGET(gtk_builder_get_object(builder, "pass_room_buffer"));
 
     msg_buffer = gtk_text_view_get_buffer(msg_box);
     chat_buffer = gtk_text_view_get_buffer(chat_box);
     room_buf = gtk_text_view_get_buffer(room_input);
     pass_buf = gtk_text_view_get_buffer(pass_input);
+    // room_create_buf = gtk_text_view_get_buffer(room_create_input);
+    // pass_create_buf = gtk_text_view_get_buffer(pass_create_input);
     
     g_object_unref(builder);
 

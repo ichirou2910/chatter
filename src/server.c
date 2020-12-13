@@ -382,7 +382,7 @@ group_t* get_group(char* group_id) {
 
 // Create a new group with PASSWORD
 // @return NULL or new group's ID
-char* create_group(char* password) {
+char* create_group(char* name, char* password) {
     pthread_mutex_lock(&clients_mutex);
 
     char* id = rand_string(GROUP_ID_LEN);
@@ -390,6 +390,7 @@ char* create_group(char* password) {
     gr->cli_count = 0;
     gr->mes_count = 0;
     strcpy(gr->group_id, id);
+    strcpy(gr->name, name);
     strcpy(gr->password, password);
 
     for (int i = 0; i < MAX_GROUPS; i++) {
@@ -397,7 +398,7 @@ char* create_group(char* password) {
             groups[i] = gr;
             gr->idx = i;
             gr_count++;
-            printf("[SYSTEM] Created new group: %s - %s\n", id, password);
+            printf("[SYSTEM] Created new group: %s - %s - %s\n", id, name, password);
             pthread_mutex_unlock(&clients_mutex);
             return id;
         }
@@ -643,8 +644,12 @@ void* handle_client(void* arg) {
                 // printf("Someone requested to join\n");
                 param = strtok(NULL, " \n");
                 if (param != NULL) {
-                    char* result = create_group(param);
-                    join_group(result, param, cli);
+                    char *pass = strtok(NULL, " \n");
+                    char *name = (char*)malloc(NAME_LEN + 1);
+                    strcpy(name, param);
+
+                    char* result = create_group(name, pass);
+                    join_group(result, pass, cli);
 
                     sprintf(buffer, "[SYSTEM] Group created and joined. Group ID: %s", result);
                     send_user(buffer, cli->uid);
