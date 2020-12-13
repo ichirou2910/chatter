@@ -3,6 +3,9 @@
 #include <glib.h>
 
 #include <sys/socket.h>
+#include <sys/sendfile.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <stdio.h>
@@ -11,9 +14,9 @@
 #include <errno.h>
 #include <string.h>
 #include <pthread.h>
-#include <sys/types.h>
 #include <signal.h>
 #include <time.h>
+#include <fcntl.h>
 
 volatile sig_atomic_t flag = 0;
 int sockfd = 0;
@@ -22,9 +25,14 @@ time_t now;
 struct tm* local;
 
 int connect_once = 0;
+int name_inited = 0;
 
 GtkWidget *msg_box;
 GtkWidget *chat_box;
+GtkWidget *room_input;
+GtkWidget *pass_input;
+GtkTextBuffer *room_buf;
+GtkTextBuffer *pass_buf;
 GtkTextBuffer *msg_buffer;
 GtkTextBuffer *chat_buffer;
 char send_buf[BUFFER_SZ] = {};
@@ -58,7 +66,8 @@ void recv_msg_handler() {
     while (1) {
         int receive = recv(sockfd, message, BUFFER_SZ, 0);
 
-        if (receive > 0) {
+        if (!strncmp(message, "[SYSTEM] File: ", 15)) {
+            // Print file notification
             time(&now);
             local = localtime(&now);
             sprintf(msg_content, "%02d:%02d ~ %s\n", local->tm_hour, local->tm_min, message);
@@ -69,12 +78,59 @@ void recv_msg_handler() {
 
             gtk_text_buffer_insert(chat_buffer, &start_chat_box, msg_content, -1);
 
+            // get the file name only
+            // memmove(message, message + 15, strlen(message) - 15);
+            // Initialize
+            int fd = open(message + 15, O_WRONLY | O_CREAT | O_EXCL, 0700);
+            char fileBuf[BUFFER_SZ];
+            memset(fileBuf, 0x0, BUFFER_SZ);
+            int bufLen = 0;
+            // int pck_cnt = 0;
+
+            // Get file size
+            // char tmpBuf[BUFFER_SZ];
+            // recv(sockfd, tmpBuf, BUFFER_SZ, 0);
+            // long file_size = atol(tmpBuf);
+            // printf("File size: %ld\n", file_size);
+
+            while ((bufLen = read(sockfd, fileBuf, BUFFER_SZ)) > 0) {
+                int write_sz = write(fd, fileBuf, bufLen);
+                memset(fileBuf, 0x0, BUFFER_SZ);
+                // file_size -= (long)bufLen;
+                // printf("%d - Data left: %ld\n", pck_cnt++, file_size);
+                if (write_sz < bufLen) {
+                    break;
+                }
+                if (bufLen == 0 || bufLen != BUFFER_SZ) {
+                    break;
+                }
+            }
+            close(fd);
+            sprintf(msg_content, "%02d:%02d ~ [SYSTEM] File received\n", local->tm_hour, local->tm_min);
+            g_print(msg_content);
+
+            gtk_text_buffer_get_end_iter(chat_buffer, &start_chat_box);
+            gtk_text_buffer_insert(chat_buffer, &start_chat_box, msg_content, -1);
+
+        } else {
+            if (receive > 0) {
+                time(&now);
+                local = localtime(&now);
+                sprintf(msg_content, "%02d:%02d ~ %s\n", local->tm_hour, local->tm_min, message);
+
+                //Get iter of chat_box
+                GtkTextIter start_chat_box;
+                gtk_text_buffer_get_end_iter(chat_buffer, &start_chat_box);
+
+                gtk_text_buffer_insert(chat_buffer, &start_chat_box, msg_content, -1);
+
+            }
+            else if (receive == 0) {
+                break;
+            }
+            bzero(message, BUFFER_SZ);
+            bzero(msg_content, 1000);
         }
-        else if (receive == 0) {
-            break;
-        }
-        bzero(message, BUFFER_SZ);
-        bzero(msg_content, 1000);
     }
 }
 
@@ -149,7 +205,38 @@ static void *server_connect(){
     send(sockfd, name, NAME_LEN, 0);
 }
 
+void on_confirm_btn_clicked(GtkButton *button, GtkWidget *join_dlg) {
+    char room[10] = {};
+    char pass[PASSWORD_LEN] = {};
+
+    //Get room's iter
+    GtkTextIter start_room;
+    GtkTextIter end_room;
+    gtk_text_buffer_get_start_iter (room_buf, &start_room);
+    gtk_text_buffer_get_end_iter (room_buf, &end_room);
+
+    //Get pass's iter
+    GtkTextIter start_pass;
+    GtkTextIter end_pass;
+    gtk_text_buffer_get_start_iter (pass_buf, &start_pass);
+    gtk_text_buffer_get_end_iter (pass_buf, &end_pass);
+
+    //Get room's input
+    strcpy(room, gtk_text_buffer_get_text(room_buf, &start_room, &end_room, FALSE));
+
+    //Get pass's input
+    strcpy(pass, gtk_text_buffer_get_text(pass_buf, &start_pass, &end_pass, FALSE));
+
+    sprintf(send_buf, ":j %s %s", room, pass);
+    send(sockfd, send_buf, strlen(send_buf), 0);
+    bzero(send_buf, BUFFER_SZ);
+
+    //Close the widget
+    gtk_widget_hide(join_dlg);
+}
+
 void on_change_name_btn_clicked(GtkButton *button, GtkTextBuffer *buffer) {
+
     //Get iter
     GtkTextIter start;
     GtkTextIter end;
@@ -160,7 +247,12 @@ void on_change_name_btn_clicked(GtkButton *button, GtkTextBuffer *buffer) {
     strcpy(name, gtk_text_buffer_get_text(buffer, &start, &end, FALSE));
     g_print("Name changed: %s\n", name);
 
-    connect_once = 0;
+    if(name_inited) {
+        sprintf(send_buf, ":r %s", name);
+        send(sockfd, send_buf, strlen(send_buf), 0);
+        bzero(send_buf, BUFFER_SZ);
+    } else name_inited = 1;
+    
 }
 
 void on_connect_btn_clicked(GtkButton *button, GtkTextBuffer *buffer) {
@@ -197,8 +289,17 @@ void on_msg_send_btn_clicked(GtkButton *button, GtkTextBuffer *buffer) {
     }
 }
 
+void on_join_btn_activate(GtkMenuItem *join, GtkWidget *join_dlg) {
+    gtk_widget_show(join_dlg);
+}
+
+void on_cancel_btn_clicked(GtkButton *cancel, GtkWidget *join_dlg) {
+    gtk_widget_hide(join_dlg);
+}
+
 void on_client_main_destroy()
 {
+    close(sockfd);
     gtk_main_quit();
 }
 
@@ -223,8 +324,13 @@ int main(int argc, char *argv[]) {
 
     msg_box = GTK_WIDGET(gtk_builder_get_object(builder, "msg_view"));
     chat_box = GTK_WIDGET(gtk_builder_get_object(builder, "chat_view"));
+    room_input = GTK_WIDGET(gtk_builder_get_object(builder, "room_input"));
+    pass_input = GTK_WIDGET(gtk_builder_get_object(builder, "pass_input"));
+
     msg_buffer = gtk_text_view_get_buffer(msg_box);
     chat_buffer = gtk_text_view_get_buffer(chat_box);
+    room_buf = gtk_text_view_get_buffer(room_input);
+    pass_buf = gtk_text_view_get_buffer(pass_input);
     
     g_object_unref(builder);
 
@@ -240,13 +346,6 @@ int main(int argc, char *argv[]) {
     }
 
     gtk_main();
-
-    while (1) {
-        if (flag) {
-            g_print("\nGoodbye\n");
-            break;
-        }
-    }
 
     close(sockfd);
 
