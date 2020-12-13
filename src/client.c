@@ -24,8 +24,10 @@ char name[NAME_LEN];
 time_t now;
 struct tm* local;
 
+int connected = 0;
 int connect_once = 0;
 int name_inited = 0;
+int switch_flag = 0;
 
 GtkWidget *msg_box;
 GtkWidget *chat_box;
@@ -70,13 +72,13 @@ void recv_msg_handler() {
             // Print file notification
             time(&now);
             local = localtime(&now);
-            sprintf(msg_content, "%02d:%02d ~ %s\n", local->tm_hour, local->tm_min, message);
+            // sprintf(msg_content, "%02d:%02d ~ %s\n", local->tm_hour, local->tm_min, message);
 
             //Get iter of chat_box
-            GtkTextIter start_chat_box;
-            gtk_text_buffer_get_end_iter(chat_buffer, &start_chat_box);
+            // GtkTextIter start_chat_box;
+            // gtk_text_buffer_get_end_iter(chat_buffer, &start_chat_box);
 
-            gtk_text_buffer_insert(chat_buffer, &start_chat_box, msg_content, -1);
+            // gtk_text_buffer_insert(chat_buffer, &start_chat_box, msg_content, -1);
 
             // get the file name only
             // memmove(message, message + 15, strlen(message) - 15);
@@ -85,19 +87,10 @@ void recv_msg_handler() {
             char fileBuf[BUFFER_SZ];
             memset(fileBuf, 0x0, BUFFER_SZ);
             int bufLen = 0;
-            // int pck_cnt = 0;
-
-            // Get file size
-            // char tmpBuf[BUFFER_SZ];
-            // recv(sockfd, tmpBuf, BUFFER_SZ, 0);
-            // long file_size = atol(tmpBuf);
-            // printf("File size: %ld\n", file_size);
 
             while ((bufLen = read(sockfd, fileBuf, BUFFER_SZ)) > 0) {
                 int write_sz = write(fd, fileBuf, bufLen);
                 memset(fileBuf, 0x0, BUFFER_SZ);
-                // file_size -= (long)bufLen;
-                // printf("%d - Data left: %ld\n", pck_cnt++, file_size);
                 if (write_sz < bufLen) {
                     break;
                 }
@@ -106,11 +99,14 @@ void recv_msg_handler() {
                 }
             }
             close(fd);
-            sprintf(msg_content, "%02d:%02d ~ [SYSTEM] File received\n", local->tm_hour, local->tm_min);
-            g_print(msg_content);
 
-            gtk_text_buffer_get_end_iter(chat_buffer, &start_chat_box);
-            gtk_text_buffer_insert(chat_buffer, &start_chat_box, msg_content, -1);
+            // sprintf(msg_content, "%02d:%02d ~ [SYSTEM] File received\n", local->tm_hour, local->tm_min);
+            // g_print(msg_content);
+
+            // gtk_text_buffer_get_end_iter(chat_buffer, &start_chat_box);
+            // gtk_text_buffer_insert(chat_buffer, &start_chat_box, msg_content, -1);
+
+            // continue;
 
         } else {
             if (receive > 0) {
@@ -205,6 +201,34 @@ static void *server_connect(){
     send(sockfd, name, NAME_LEN, 0);
 }
 
+void on_open_file_activate(GtkMenuItem *menuitem, GtkWidget* w_dlg_file_choose) {
+    // Show the "Open Text File" dialog box
+    gtk_widget_show(w_dlg_file_choose);
+}
+
+void on_open_btn_clicked(GtkButton *button, GtkWidget* w_dlg_file_choose) {
+    char path[1000] = {};
+
+    // Get the file name from the dialog box
+    if(connected) {
+        strcpy(path, gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(w_dlg_file_choose)));
+        if (strcmp(path, "")) {
+            sprintf(send_buf, ":f %s", path);
+            send(sockfd, send_buf, strlen(send_buf), 0);
+            bzero(send_buf, BUFFER_SZ);
+
+            g_print("File request sent!\n");
+        }
+    }
+
+    // Finished with the "Open Text File" dialog box, so hide it
+    gtk_widget_hide(w_dlg_file_choose);
+}
+
+void on_cancel_bt_clicked(GtkButton *button, GtkWidget* w_dlg_file_choose) {
+    gtk_widget_hide(w_dlg_file_choose);
+}
+
 void on_confirm_btn_clicked(GtkButton *button, GtkWidget *join_dlg) {
     char room[10] = {};
     char pass[PASSWORD_LEN] = {};
@@ -275,6 +299,7 @@ void on_connect_btn_clicked(GtkButton *button, GtkTextBuffer *buffer) {
         gtk_text_buffer_insert(buffer, &start, "Type :h or :help for Chatter commands\n", -1);
 
         connect_once = 1;
+        connected = 1;
     }
 
 }
@@ -296,6 +321,10 @@ void on_join_btn_activate(GtkMenuItem *join, GtkWidget *join_dlg) {
 void on_cancel_btn_clicked(GtkButton *cancel, GtkWidget *join_dlg) {
     gtk_widget_hide(join_dlg);
 }
+
+// void on_open_file_activate(GtkMenuItem *open, GtkWidget *file_dlg) {
+//     gtk_widget_show(file_dlg);
+// }
 
 void on_client_main_destroy()
 {

@@ -779,16 +779,11 @@ void* handle_client(void* arg) {
                     send_user(buffer, cli->uid);
                 }
                 else {
-                    // For now, use a static file path
-                    // Later we will get file path from GTK File Selection
-                    char* home = getenv("HOME");
-                    char* path = "/Pictures/usagyuun.png";
-                    char* fullpath = malloc(strlen(home) + strlen(path) + 1);
-                    strcpy(fullpath, home);
-                    strcat(fullpath, path);
-
+                    //Get file's path
+                    param = strtok(NULL, " \n");
+                    printf("%s\n", param);
                     // Send file
-                    send_file(fullpath, cli->uid, cli->active_group);
+                    send_file(param, cli->uid, cli->active_group);
                 }
             }
             // :i - Get room info
