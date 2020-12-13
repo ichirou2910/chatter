@@ -682,7 +682,7 @@ void* handle_client(void* arg) {
                     else if (res == 1) {
                         sprintf(buffer, "[SYSTEM] Joined group: %s", gid);
                         send_user(buffer, cli->uid);
-                        sprintf(buffer, "[SYSTEM] %s joined in the chat", name);
+                        sprintf(buffer, "[SYSTEM] %s joined in the chat", cli->name);
                         send_other(buffer, cli->uid, gid);
                     }
                 }
@@ -731,25 +731,26 @@ void* handle_client(void* arg) {
             }
             // :r - Rename
             else if (!strcmp(cmd, ":rename") || !strcmp(cmd, ":r")) {
-                if (!strcmp(cli->active_group, "")) {
-                    sprintf(buffer, "[SYSTEM] You are not in a group");
-                    send_user(buffer, cli->uid);
+                // if (!strcmp(cli->active_group, "")) {
+                //     sprintf(buffer, "[SYSTEM] You are not in a group");
+                //     send_user(buffer, cli->uid);
+                // }
+                param = strtok(NULL, " \n");
+                if (param != NULL) {
+                    char* name = (char*)malloc(NAME_LEN);
+                    strcpy(name, param);
+                    // printf("Rename request to %s\n", param);
+                    sprintf(buffer, "[SYSTEM] Renamed %s to %s", cli->name, name);
+                    strcpy(cli->name, name);
+                    if(!strcmp(cli->active_group, ""))
+                        send_user(buffer, cli->uid);
+                    else 
+                        send_group(buffer, cli->active_group);
+                    free(name);
                 }
                 else {
-                    param = strtok(NULL, " \n");
-                    if (param != NULL) {
-                        char* name = (char*)malloc(NAME_LEN);
-                        strcpy(name, param);
-                        // printf("Rename request to %s\n", param);
-                        sprintf(buffer, "[SYSTEM] Renamed %s to %s", cli->name, name);
-                        strcpy(cli->name, name);
-                        send_group(buffer, cli->active_group);
-                        free(name);
-                    }
-                    else {
-                        sprintf(buffer, "[SYSTEM] Not enough info provided");
-                        send_user(buffer, cli->uid);
-                    }
+                    sprintf(buffer, "[SYSTEM] Not enough info provided");
+                    send_user(buffer, cli->uid);
                 }
             }
             // :q - Quit room
@@ -778,16 +779,11 @@ void* handle_client(void* arg) {
                     send_user(buffer, cli->uid);
                 }
                 else {
-                    // For now, use a static file path
-                    // Later we will get file path from GTK File Selection
-                    char* home = getenv("HOME");
-                    char* path = "/Random/usagyuun.png";
-                    char* fullpath = malloc(strlen(home) + strlen(path) + 1);
-                    strcpy(fullpath, home);
-                    strcat(fullpath, path);
-
+                    //Get file's path
+                    param = strtok(NULL, " \n");
+                    printf("%s\n", param);
                     // Send file
-                    send_file(fullpath, cli->uid, cli->active_group);
+                    send_file(param, cli->uid, cli->active_group);
                 }
             }
             // :i - Get room info

@@ -31,8 +31,10 @@ file(GLOB SOURCES src/*.c)
 
 add_executable(client src/client.c)
 add_executable(server src/server.c)
+# add_executable(client_console src/client_console.c)
 target_link_libraries(client ${GTK_LIBRARIES})
 target_link_libraries(server ${GTK_LIBRARIES})
+# target_link_libraries(client_console ${GTK_LIBRARIES})
 
 set(CPACK_PROJECT_NAME ${PROJECT_NAME})
 set(CPACK_PROJECT_VERSION ${PROJECT_VERSION})
