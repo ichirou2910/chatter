@@ -14,6 +14,7 @@
 #include <time.h>
 #include <signal.h>
 #include <fcntl.h>
+#include <libgen.h>
 
 static _Atomic unsigned int cli_count = 0;
 static _Atomic unsigned int gr_count = 0;
@@ -257,8 +258,7 @@ void send_other(char* s, int uid, char* group_id) {
 void send_file(char* path, int uid, char* group_id) {
     pthread_mutex_lock(&clients_mutex);
 
-    // Temporary file name, will implement proper file name extractor
-    char* filename = "usagyuun.png";
+    char* filename = basename(path);
 
     // Cache receiver
     group_t* gr = get_group(group_id);
@@ -621,7 +621,11 @@ void* handle_client(void* arg) {
     }
 
     // While stay connected to the chat
-    while (!leave_flag) {
+    while (1) {
+        if (leave_flag) {
+            break;
+        }
+
         int receive = recv(cli->sockfd, buffer, BUFFER_SZ, 0);
         // printf("%s\n", buffer);
         // for (int i = 0; i < receive; i++) {
@@ -718,17 +722,17 @@ void* handle_client(void* arg) {
                     send_user(buffer, cli->uid);
                 }
             }
-            // :l - Go to lobby
-            else if (!strcmp(cmd, ":lobby") || !strcmp(cmd, ":l")) {
-                // printf("Return to lobby request\n");
-                if (!strcmp(cli->active_group, "")) {
-                    sprintf(buffer, "[SYSTEM] You are already in the lobby");
-                    send_user(buffer, cli->uid);
-                }
-                else {
-                    return_lobby(cli);
-                }
-            }
+            // // :l - Go to lobby
+            // else if (!strcmp(cmd, ":lobby") || !strcmp(cmd, ":l")) {
+            //     // printf("Return to lobby request\n");
+            //     if (!strcmp(cli->active_group, "")) {
+            //         sprintf(buffer, "[SYSTEM] You are already in the lobby");
+            //         send_user(buffer, cli->uid);
+            //     }
+            //     else {
+            //         return_lobby(cli);
+            //     }
+            // }
             // :r - Rename
             else if (!strcmp(cmd, ":rename") || !strcmp(cmd, ":r")) {
                 if (!strcmp(cli->active_group, "")) {
@@ -752,8 +756,8 @@ void* handle_client(void* arg) {
                     }
                 }
             }
-            // :q - Quit room
-            else if (!strcmp(cmd, ":quit") || !strcmp(cmd, ":q")) {
+            // :l - Quit room
+            else if (!strcmp(cmd, ":l")) {
                 if (!strcmp(cli->active_group, "")) {
                     sprintf(buffer, "[SYSTEM] You are not in a group");
                     send_user(buffer, cli->uid);
@@ -778,16 +782,10 @@ void* handle_client(void* arg) {
                     send_user(buffer, cli->uid);
                 }
                 else {
-                    // For now, use a static file path
-                    // Later we will get file path from GTK File Selection
-                    char* home = getenv("HOME");
-                    char* path = "/Random/usagyuun.png";
-                    char* fullpath = malloc(strlen(home) + strlen(path) + 1);
-                    strcpy(fullpath, home);
-                    strcat(fullpath, path);
+                    cmd[strlen(cmd)] = ' ';
 
                     // Send file
-                    send_file(fullpath, cli->uid, cli->active_group);
+                    send_file(cmd + 3, cli->uid, cli->active_group);
                 }
             }
             // :i - Get room info
@@ -812,7 +810,7 @@ void* handle_client(void* arg) {
                 cmd[strlen(cmd)] = ' ';
                 char* msg = (char*)malloc(BUFFER_SZ + NAME_LEN + 3);
                 sprintf(msg, "[%s] %s", cli->name, buffer);
-                send_other(msg, cli->uid, cli->active_group);
+                send_group(msg, cli->active_group);
 
                 printf("[SYSTEM] Group: %s, User: %s, Message: %s\n", cli->active_group, cli->name, buffer);
                 str_trim_lf(buffer, strlen(buffer));
