@@ -528,10 +528,10 @@ void info_group(char* group_id, int uid) {
 
     // Allocate size for the message
     // Size = General info size + padding + (name size + padding) * mem count
-    int size = 77 + PASSWORD_LEN + GROUP_ID_LEN + (NAME_LEN + 8) * gr->cli_count;
+    int size = 75 + PASSWORD_LEN + GROUP_ID_LEN + (NAME_LEN + 8) * gr->cli_count;
     char* buffer = (char*)malloc(size);
 
-    sprintf(buffer, "[SYSTEM] Room ID: %s\n===\nRoom info:\n- Password: %s\n- Members: %d\n===\nMembers info:\n", group_id, gr->password, gr->cli_count);
+    sprintf(buffer, "[INFO] Room ID: %s\n===\nRoom info:\n- Password: %s\n- Members: %d\n===\nMembers info:\n", group_id, gr->password, gr->cli_count);
     // printf("%ld\n", strlen(buffer));
 
     int cnt = 0;

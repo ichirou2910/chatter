@@ -14,7 +14,7 @@
 
 #define PAD_LENGTH 1000
 #define PAD_VIEW_ROWS maxY - 10
-#define PAD_VIEW_COLS maxX - 12
+#define PAD_VIEW_COLS maxX - 7
 #define BLUE_TEXT 1
 #define YELLOW_TEXT 2
 #define RED_TEXT 3
