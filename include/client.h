@@ -16,8 +16,8 @@
 #define PASSWORD_LEN 32
 
 #define PAD_LENGTH 1000
-#define PAD_VIEW_ROWS screen_cols - 10
-#define PAD_VIEW_COLS screen_rows - 7
+#define PAD_VIEW_ROWS screen_rows - 13
+#define PAD_VIEW_COLS screen_cols - 7
 #define BLUE_TEXT 1
 #define YELLOW_TEXT 2
 #define RED_TEXT 3
@@ -33,7 +33,6 @@ typedef struct {
 void str_overwrite_stdout();
 void str_trim_lf(char* arr, int length);
 void catch_ctrl_c_and_exit();
-void update_room_list(char* list);
 void recv_msg_handler();
 void send_msg_handler();
 void auto_scroll(int chat_pad_height);
@@ -42,6 +41,8 @@ void auto_scroll(int chat_pad_height);
 void print_msg(char* str, int color); // Print a message
 void print_info(char* info); // Print Room info
 void print_chat(char* content); // Print Chat messages
+void print_sys(char* msg); //Print system message
+void update_room_list(char* list);
 
 // ---
 
