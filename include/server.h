@@ -59,20 +59,23 @@ int check_room(char* room_id, char* password);
 room_t* get_room(char* room_id);
 int join_room(char* room_id, char* password, client_t* cl);
 void leave_all_rooms(client_t* cl);
-void list_room(int uid);
 int leave_room(char* room_id, client_t* cl);
 int switch_room(char* room_id, client_t* cl);
 void return_lobby(client_t* cl);
-void info_room(char* room_id, int uid);
 
-// ===
+// === DATA PUBLISHING ===
+void send_info_room(char* room_id, int uid);
+void send_list_room(int uid);
+void send_list_msg(char* room_id, int uid);
+
+// ---
 // MESSAGING FUNCTION ===
 void send_room(char* s, char* room_id);
 void send_user(char* s, int uid);
 void send_other(char* s, int uid, char* room_id);
 void send_file(char* path, int uid, char* room_id);
 
-// ===
+// ---
 
 void* handle_client(void* arg);
 

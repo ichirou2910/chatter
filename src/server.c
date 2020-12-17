@@ -21,6 +21,9 @@ static _Atomic unsigned int cli_count = 0;
 static _Atomic unsigned int rm_count = 0;
 static int uid = 10;
 
+time_t now;
+struct tm* local;
+
 client_t* clients[MAX_ROOMS * ROOM_MAX_CLIENTS];
 room_t* rooms[MAX_ROOMS];
 
@@ -30,6 +33,9 @@ int main() {
     // Generate seed
     srand(time(NULL));
     int port = PORT;
+
+    time(&now);
+    local = localtime(&now);
 
     int option = 1;
     int listenfd = 0, connfd = 0;
@@ -192,6 +198,14 @@ void send_room(char* s, char* room_id) {
             }
         }
     }
+
+    // Add message to room storage
+    time(&now);
+    local = localtime(&now);
+    char* archive = (char*)malloc(strlen(s) + 9);
+    sprintf(archive, "%02d:%02d ~ %s", local->tm_hour, local->tm_min, s);
+    strcpy(rm->messages[rm->mes_count++], archive);
+    free(archive);
 
     pthread_mutex_unlock(&clients_mutex);
 }
@@ -445,7 +459,7 @@ int join_room(char* room_id, char* password, client_t* cl) {
                 if (cl->room_ids[k][0] == 0) {
                     strcpy(cl->room_ids[k], rooms[i]->room_id);
                     strcpy(cl->room_names[k], rooms[i]->room_name);
-                    strcpy(cl->active_room, room_id); // Switch focus to newly joined room
+                    // strcpy(cl->active_room, room_id); // Switch focus to newly joined room
                     cl->rm_count++;
                     pthread_mutex_unlock(&clients_mutex);
                     return 1;
@@ -515,7 +529,7 @@ void leave_all_rooms(client_t* cl) {
     pthread_mutex_unlock(&clients_mutex);
 }
 
-void info_room(char* room_id, int uid) {
+void send_info_room(char* room_id, int uid) {
     room_t* rm = get_room(room_id);
 
     // Allocate size for the message
@@ -544,7 +558,7 @@ void info_room(char* room_id, int uid) {
     free(buffer);
 }
 
-void list_room(int uid) {
+void send_list_room(int uid) {
     char* tmp = (char*)malloc(ROOM_ID_LEN + ROOM_NAME_LEN + 3);
 
     for (int i = 0; i < ROOM_MAX_CLIENTS * MAX_ROOMS; i++) {
@@ -575,6 +589,33 @@ void list_room(int uid) {
             free(tmp);
         }
     }
+}
+
+void send_list_msg(char* room_id, int uid) {
+    char* tmp = (char*)malloc(BUFFER_SZ + 1);
+
+    // Find room
+    room_t* rm = get_room(room_id);
+
+    if (rm && rm->mes_count) {
+        // Concatenate list
+        int msg_cnt = rm->mes_count;
+        char* msg_list = (char*)malloc(12 + msg_cnt * BUFFER_SZ);
+        sprintf(msg_list, "[MESSAGES] ");
+        if (msg_cnt) {
+            for (int i = 0; i < msg_cnt; i++) {
+                sprintf(tmp, "%s\n", rm->messages[i]);
+                strcat(msg_list, tmp);
+            }
+        }
+        send_user(msg_list, uid);
+        free(msg_list);
+    }
+    else {
+        send_user("[MESSAGES]", uid);
+    }
+
+    free(tmp);
 }
 
 // Leave a specific room
@@ -673,21 +714,23 @@ void* handle_client(void* arg) {
             }
             // :c - Create room
             else if (!strcmp(cmd, ":c")) {
+                // Get parameters
                 param = strtok(NULL, " \n");
                 char* password = (char*)malloc(PASSWORD_LEN + 1);
                 strcpy(password, param);
                 param = strtok(NULL, "\n");
                 char* name = (char*)malloc(ROOM_NAME_LEN + 1);
                 strcpy(name, param);
+
                 if (password != NULL && name != NULL) {
                     char* result = create_room(password, name);
                     join_room(result, password, cli);
 
-                    sprintf(buffer, "[SYSTEM] Room created and joined. room ID: %s", result);
-                    // buffer[BUFFER_SZ] = 0;
-                    send_user(buffer, cli->uid);
+                    // sprintf(buffer, "[SYSTEM] Room created and joined. room ID: %s", result);
+                    // send_user(buffer, cli->uid);
 
-                    list_room(cli->uid);
+                    send_list_room(cli->uid);
+                    // send_list_msg(result, cli->uid);
                 }
                 else {
                     sprintf(buffer, "[SYSTEM] Please provide room password");
@@ -721,11 +764,12 @@ void* handle_client(void* arg) {
                         send_user(buffer, cli->uid);
                     }
                     else if (res == 1) {
-                        sprintf(buffer, "[SYSTEM] Joined room: %s", gid);
-                        send_user(buffer, cli->uid);
+                        // sprintf(buffer, "[SYSTEM] Joined room: %s", gid);
+                        // send_user(buffer, cli->uid);
                         sprintf(buffer, "[SYSTEM] %s joined in the chat", name);
                         send_other(buffer, cli->uid, gid);
-                        list_room(cli->uid);
+                        send_list_room(cli->uid);
+                        // send_list_msg(gid, cli->uid);
                     }
                 }
                 else {
@@ -746,8 +790,7 @@ void* handle_client(void* arg) {
                     else {
                         int res = switch_room(param, cli);
                         if (res) {
-                            sprintf(buffer, "[SYSTEM] Switched to room %s", cli->active_room);
-                            send_user(buffer, cli->uid);
+                            send_list_msg(cli->active_room, cli->uid);
                         }
                         else {
                             sprintf(buffer, "[SYSTEM] Invalid room id");
@@ -795,11 +838,9 @@ void* handle_client(void* arg) {
 
                     sprintf(buffer, "[SYSTEM] %s left the room", cli->name);
                     send_other(buffer, cli->uid, gid);
-                    sprintf(buffer, "[SYSTEM] Left room %s", gid);
-                    send_user(buffer, cli->uid);
 
                     leave_room(gid, cli);
-                    list_room(cli->uid);
+                    send_list_room(cli->uid);
                     free(gid);
                 }
             }
@@ -824,7 +865,7 @@ void* handle_client(void* arg) {
                     send_user(buffer, cli->uid);
                 }
                 else {
-                    info_room(cli->active_room, cli->uid);
+                    send_info_room(cli->active_room, cli->uid);
                 }
             }
             // In case not in a room
