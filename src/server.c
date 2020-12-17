@@ -21,8 +21,8 @@ static _Atomic unsigned int cli_count = 0;
 static _Atomic unsigned int gr_count = 0;
 static int uid = 10;
 
-client_t* clients[MAX_GROUPS * GROUP_MAX_CLIENTS];
-group_t* groups[MAX_GROUPS];
+client_t* clients[MAX_ROOMS * ROOM_MAX_CLIENTS];
+room_t* rooms[MAX_ROOMS];
 
 pthread_mutex_t clients_mutex;
 
@@ -79,7 +79,7 @@ int main() {
         connfd = accept(listenfd, (struct sockaddr*)&cli_addr, &clilen);
 
         // Check for max clients
-        // if (cli_count + 1 == GROUP_MAX_CLIENTS) {
+        // if (cli_count + 1 == ROOM_MAX_CLIENTS) {
         //     printf("Max clients connection reached. Connection rejected\n");
         //     print_ip_addr(cli_addr);
         //     close(connfd);
@@ -93,8 +93,8 @@ int main() {
         cl->sockfd = connfd;
         cl->uid = uid++;
 
-        for (int i = 0; i < CLIENTS_MAX_GROUP; i++) {
-            cl->group_ids[i][0] = '\0';
+        for (int i = 0; i < CLIENT_MAX_ROOMS; i++) {
+            cl->room_ids[i][0] = '\0';
         }
 
         // Add client to queue
@@ -107,7 +107,7 @@ int main() {
     }
 
     // free(clients);
-    // free(groups);
+    // free(rooms);
     return EXIT_SUCCESS;
 }
 
@@ -131,7 +131,7 @@ void str_trim_lf(char* arr, int length) {
 void join_server(client_t* cl) {
     pthread_mutex_lock(&clients_mutex);
 
-    for (int i = 0; i < GROUP_MAX_CLIENTS; i++) {
+    for (int i = 0; i < ROOM_MAX_CLIENTS; i++) {
         if (!clients[i]) {
             clients[i] = cl;
             cli_count++;
@@ -147,7 +147,7 @@ void join_server(client_t* cl) {
 void leave_server(int uid) {
     pthread_mutex_lock(&clients_mutex);
 
-    for (int i = 0; i < GROUP_MAX_CLIENTS; i++) {
+    for (int i = 0; i < ROOM_MAX_CLIENTS; i++) {
         if (clients[i]) {
             if (clients[i]->uid == uid) {
                 clients[i] = NULL;
@@ -169,24 +169,24 @@ void print_ip_addr(struct sockaddr_in addr) {
 }
 
 // Handle message sending to clients
-// Send message S to clients of room GROUP_ID 
-void send_group(char* s, char* group_id) {
+// Send message S to clients of room room_ID 
+void send_room(char* s, char* room_id) {
     pthread_mutex_lock(&clients_mutex);
 
-    group_t* gr = get_group(group_id);
+    room_t* gr = get_room(room_id);
     if (!gr) {
         printf("An error occured\n");
         return;
     }
 
     int count = gr->cli_count;
-    for (int i = 0; i < GROUP_MAX_CLIENTS; i++) {
+    for (int i = 0; i < ROOM_MAX_CLIENTS; i++) {
         if (count == 0) {
             break;
         }
         if (gr->clients[i]) {
             count--;
-            if (!strcmp(gr->clients[i]->active_group, group_id) && write(gr->clients[i]->sockfd, s, strlen(s)) < 0) {
+            if (!strcmp(gr->clients[i]->active_room, room_id) && write(gr->clients[i]->sockfd, s, strlen(s)) < 0) {
                 printf("ERROR: write to descriptor failed\n");
                 break;
             }
@@ -200,7 +200,7 @@ void send_user(char* s, int uid) {
     pthread_mutex_lock(&clients_mutex);
 
     s[strlen(s)] = 0;
-    for (int i = 0; i < GROUP_MAX_CLIENTS * MAX_GROUPS; i++) {
+    for (int i = 0; i < ROOM_MAX_CLIENTS * MAX_ROOMS; i++) {
         // Prevent looping through all 100 clients
         if (clients[i]->uid == uid) {
             if (write(clients[i]->sockfd, s, strlen(s)) < 0) {
@@ -216,24 +216,24 @@ void send_user(char* s, int uid) {
     pthread_mutex_unlock(&clients_mutex);
 }
 
-void send_other(char* s, int uid, char* group_id) {
+void send_other(char* s, int uid, char* room_id) {
     pthread_mutex_lock(&clients_mutex);
 
-    group_t* gr = get_group(group_id);
+    room_t* gr = get_room(room_id);
     if (!gr) {
         printf("An error occured\n");
         return;
     }
 
     int count = gr->cli_count;
-    for (int i = 0; i < GROUP_MAX_CLIENTS; i++) {
+    for (int i = 0; i < ROOM_MAX_CLIENTS; i++) {
         if (count == 0) {
             break;
         }
         if (gr->clients[i]) {
             count--;
             if (gr->clients[i]->uid != uid) {
-                if (!strcmp(gr->clients[i]->active_group, group_id) && write(gr->clients[i]->sockfd, s, strlen(s)) < 0) {
+                if (!strcmp(gr->clients[i]->active_room, room_id) && write(gr->clients[i]->sockfd, s, strlen(s)) < 0) {
                     printf("ERROR: write to descriptor failed\n");
                     break;
                 }
@@ -244,14 +244,14 @@ void send_other(char* s, int uid, char* group_id) {
     pthread_mutex_unlock(&clients_mutex);
 }
 
-// Send a file of PATH to the group
-void send_file(char* path, int uid, char* group_id) {
+// Send a file of PATH to the room
+void send_file(char* path, int uid, char* room_id) {
     pthread_mutex_lock(&clients_mutex);
 
     char* filename = basename(path);
 
     // Cache receiver
-    group_t* gr = get_group(group_id);
+    room_t* gr = get_room(room_id);
     if (!gr) {
         printf("An error occured\n");
         return;
@@ -260,7 +260,7 @@ void send_file(char* path, int uid, char* group_id) {
     int count = gr->cli_count;
     int idx[count - 1];
     int idx_cnt = 0;
-    for (int i = 0; i < GROUP_MAX_CLIENTS; i++) {
+    for (int i = 0; i < ROOM_MAX_CLIENTS; i++) {
         if (count == 0) {
             break;
         }
@@ -313,19 +313,19 @@ void send_file(char* path, int uid, char* group_id) {
     pthread_mutex_unlock(&clients_mutex);
 }
 
-// Send a message to group. Basically send_other but with formatting
-// Check if NAME is used in GROUP_ID
-// @return -1 if group not found, 1 if used, 0 if not used
-int check_used_name(char* name, char* group_id) {
-    group_t* gr = get_group(group_id);
+// Send a message to room. Basically send_other but with formatting
+// Check if NAME is used in room_ID
+// @return -1 if room not found, 1 if used, 0 if not used
+int check_used_name(char* name, char* room_id) {
+    room_t* gr = get_room(room_id);
 
     if (!gr) {
-        printf("[SYSTEM] Group not found\n");
+        printf("[SYSTEM] room not found\n");
         return -1;
     }
 
     int count = 0;
-    for (int i = 0; i < GROUP_MAX_CLIENTS; i++) {
+    for (int i = 0; i < ROOM_MAX_CLIENTS; i++) {
         if (count == gr->cli_count) {
             return 0;
         }
@@ -338,17 +338,17 @@ int check_used_name(char* name, char* group_id) {
     return 0;
 }
 
-// Check if a group with GROUP_ID and PASSWORD exists
-// @return Group index if exist, -1 otherwise
-int check_group(char* group_id, char* password) {
+// Check if a room with room_ID and PASSWORD exists
+// @return room index if exist, -1 otherwise
+int check_room(char* room_id, char* password) {
     pthread_mutex_lock(&clients_mutex);
 
-    for (int i = 0; i < MAX_GROUPS; i++) {
-        if (groups[i]) {
-            // printf("Checking: %s - %s\n", groups[i]->group_id, groups[i]->password);
-            if (!strcmp(groups[i]->group_id, group_id) &&
-                !strcmp(groups[i]->password, password)) {
-                // printf("Found group\n");
+    for (int i = 0; i < MAX_ROOMS; i++) {
+        if (rooms[i]) {
+            // printf("Checking: %s - %s\n", rooms[i]->room_id, rooms[i]->password);
+            if (!strcmp(rooms[i]->room_id, room_id) &&
+                !strcmp(rooms[i]->password, password)) {
+                // printf("Found room\n");
                 pthread_mutex_unlock(&clients_mutex);
                 return i;
             }
@@ -358,48 +358,37 @@ int check_group(char* group_id, char* password) {
     return -1;
 }
 
-// Search for group with GROUP_ID
-// @return Group name or NULL
-// char* get_group_name(char* group_id) {
-//     for (int i = 0; i < MAX_GROUPS; i++) {
-//         if (groups[i] && !strcmp(groups[i]->group_id, group_id)) {
-//             return groups[i]->group_name;
-//         }
-//     }
-//     return NULL;
-// }
-
-// Search for group with GROUP_ID
-// @return Found group or NULL
-group_t* get_group(char* group_id) {
-    for (int i = 0; i < MAX_GROUPS; i++) {
-        if (groups[i] && !strcmp(groups[i]->group_id, group_id)) {
-            group_t* res = groups[i];
+// Search for room with room_ID
+// @return Found room or NULL
+room_t* get_room(char* room_id) {
+    for (int i = 0; i < MAX_ROOMS; i++) {
+        if (rooms[i] && !strcmp(rooms[i]->room_id, room_id)) {
+            room_t* res = rooms[i];
             return res;
         }
     }
     return NULL;
 }
 
-// Create a new group with PASSWORD
-// @return NULL or new group's ID
-char* create_group(char* password, char* name) {
+// Create a new room with PASSWORD
+// @return NULL or new room's ID
+char* create_room(char* password, char* name) {
     pthread_mutex_lock(&clients_mutex);
 
-    char* id = rand_string(GROUP_ID_LEN);
-    group_t* gr = (group_t*)malloc(sizeof(group_t));
+    char* id = rand_string(ROOM_ID_LEN);
+    room_t* gr = (room_t*)malloc(sizeof(room_t));
     gr->cli_count = 0;
     gr->mes_count = 0;
-    strcpy(gr->group_id, id);
+    strcpy(gr->room_id, id);
     strcpy(gr->password, password);
-    strcpy(gr->group_name, name);
+    strcpy(gr->room_name, name);
 
-    for (int i = 0; i < MAX_GROUPS; i++) {
-        if (!groups[i]) {
-            groups[i] = gr;
+    for (int i = 0; i < MAX_ROOMS; i++) {
+        if (!rooms[i]) {
+            rooms[i] = gr;
             gr->idx = i;
             gr_count++;
-            printf("[SYSTEM] Created new group: %s - %s - %s\n", id, password, name);
+            printf("[SYSTEM] Created new room: %s - %s - %s\n", id, password, name);
             pthread_mutex_unlock(&clients_mutex);
             return id;
         }
@@ -409,35 +398,35 @@ char* create_group(char* password, char* name) {
     return NULL;
 }
 
-// Join client CL in group GROUP_ID
+// Join client CL in room ROOM_ID
 // @return 1 if success, 0 if wrong info, -1 if already joined 
-int join_group(char* group_id, char* password, client_t* cl) {
+int join_room(char* room_id, char* password, client_t* cl) {
     pthread_mutex_lock(&clients_mutex);
-    for (int i = 0; i < MAX_GROUPS; i++) {
-        if (groups[i] &&
-            !strcmp(groups[i]->group_id, group_id) &&
-            !strcmp(groups[i]->password, password)) {
+    for (int i = 0; i < MAX_ROOMS; i++) {
+        if (rooms[i] &&
+            !strcmp(rooms[i]->room_id, room_id) &&
+            !strcmp(rooms[i]->password, password)) {
 
 
             int idx = -1;
             int cnt = 0;
-            int mem_cnt = groups[i]->cli_count;
-            // If group empty, add user to the 1st slot
+            int mem_cnt = rooms[i]->cli_count;
+            // If room empty, add user to the 1st slot
             if (mem_cnt == 0) {
                 idx = 0;
             }
             else {
-                // printf("Found group\n");
-                for (int j = 0; j < GROUP_MAX_CLIENTS; j++) {
+                // printf("Found room\n");
+                for (int j = 0; j < ROOM_MAX_CLIENTS; j++) {
                     // Store the 1st empty slot index     
-                    if (!groups[i]->clients[j] && idx == -1) {
+                    if (!rooms[i]->clients[j] && idx == -1) {
                         idx = j;
                     }
                     if (cnt == mem_cnt)
                         break;
                     // If the user is already in the room, skip
                     else {
-                        if (groups[i]->clients[j]->uid == cl->uid) {
+                        if (rooms[i]->clients[j]->uid == cl->uid) {
                             pthread_mutex_unlock(&clients_mutex);
                             return -1;
                         }
@@ -448,15 +437,15 @@ int join_group(char* group_id, char* password, client_t* cl) {
                 }
             }
             // Add user to the previously stored slot
-            groups[i]->clients[idx] = cl;
-            groups[i]->cli_count++;
-            // printf("Joined group\n");
-            // Add group to user's joined groups
-            for (int k = 0; k < CLIENTS_MAX_GROUP; k++) {
-                if (cl->group_ids[k][0] == 0) {
-                    strcpy(cl->group_ids[k], groups[i]->group_id);
-                    strcpy(cl->group_names[k], groups[i]->group_name);
-                    strcpy(cl->active_group, group_id); // Switch focus to newly joined group
+            rooms[i]->clients[idx] = cl;
+            rooms[i]->cli_count++;
+            // printf("Joined room\n");
+            // Add room to user's joined rooms
+            for (int k = 0; k < CLIENT_MAX_ROOMS; k++) {
+                if (cl->room_ids[k][0] == 0) {
+                    strcpy(cl->room_ids[k], rooms[i]->room_id);
+                    strcpy(cl->room_names[k], rooms[i]->room_name);
+                    strcpy(cl->active_room, room_id); // Switch focus to newly joined room
                     cl->gr_count++;
                     pthread_mutex_unlock(&clients_mutex);
                     return 1;
@@ -469,14 +458,14 @@ int join_group(char* group_id, char* password, client_t* cl) {
     return 0;
 }
 
-// Switch focused group of CL to GROUP_ID
+// Switch focused room of CL to room_ID
 // @return 1 if success, 0 if wrong id
-int switch_group(char* group_id, client_t* cl) {
+int switch_room(char* room_id, client_t* cl) {
     int cnt = 0;
-    for (int i = 0; i < CLIENTS_MAX_GROUP; i++) {
+    for (int i = 0; i < CLIENT_MAX_ROOMS; i++) {
         // If target room exists
-        if (!strcmp(cl->group_ids[i], group_id)) {
-            strcpy(cl->active_group, group_id);
+        if (!strcmp(cl->room_ids[i], room_id)) {
+            strcpy(cl->active_room, room_id);
             return 1;
         }
         else if (cnt == cl->gr_count) {
@@ -489,20 +478,20 @@ int switch_group(char* group_id, client_t* cl) {
     return 0;
 }
 
-// Return to lobby, not active in any group/chat
+// Return to lobby, not active in any room/chat
 void return_lobby(client_t* cl) {
-    strcpy(cl->active_group, "");
+    strcpy(cl->active_room, "");
 }
 
-// Remove client CL from all joined groups
-void leave_all_groups(client_t* cl) {
+// Remove client CL from all joined rooms
+void leave_all_rooms(client_t* cl) {
     pthread_mutex_lock(&clients_mutex);
 
     for (int i = 0; i < cl->gr_count; i++) {
         // Remove member from room
-        if (cl->group_ids[i][0] != 0) {
-            group_t* gr = get_group(cl->group_ids[i]);
-            // printf("Quit: %s\n", cl->group_ids[i]);
+        if (cl->room_ids[i][0] != 0) {
+            room_t* gr = get_room(cl->room_ids[i]);
+            // printf("Quit: %s\n", cl->room_ids[i]);
             for (int j = 0; j < gr->cli_count; j++) {
                 if (gr->clients[j]) {
                     if (gr->clients[j]->uid == cl->uid) {
@@ -514,8 +503,8 @@ void leave_all_groups(client_t* cl) {
             }
             // Remove room if empty
             if (gr->cli_count == 0) {
-                printf("[SYSTEM] Room ID %s removed\n", gr->group_id);
-                groups[gr->idx] = NULL;
+                printf("[SYSTEM] Room ID %s removed\n", gr->room_id);
+                rooms[gr->idx] = NULL;
                 gr_count--;
 
                 free(gr);
@@ -526,20 +515,20 @@ void leave_all_groups(client_t* cl) {
     pthread_mutex_unlock(&clients_mutex);
 }
 
-void info_group(char* group_id, int uid) {
-    group_t* gr = get_group(group_id);
+void info_room(char* room_id, int uid) {
+    room_t* gr = get_room(room_id);
 
     // Allocate size for the message
     // Size = General info size + padding + (name size + padding) * mem count
-    int size = 75 + PASSWORD_LEN + GROUP_ID_LEN + (NAME_LEN + 8) * gr->cli_count;
+    int size = 75 + PASSWORD_LEN + ROOM_ID_LEN + (NAME_LEN + 8) * gr->cli_count;
     char* buffer = (char*)malloc(size);
 
-    sprintf(buffer, "[INFO] Room ID: %s\n===\nRoom info:\n- Password: %s\n- Members: %d\n===\nMembers info:\n", group_id, gr->password, gr->cli_count);
+    sprintf(buffer, "[INFO] Room ID: %s\n===\nRoom info:\n- Password: %s\n- Members: %d\n===\nMembers info:\n", room_id, gr->password, gr->cli_count);
 
     int cnt = 0;
     int mem_cnt = gr->cli_count;
     char* user_info = (char*)malloc(NAME_LEN + 7);
-    for (int i = 0; i < GROUP_MAX_CLIENTS; i++) {
+    for (int i = 0; i < ROOM_MAX_CLIENTS; i++) {
         if (gr->clients[i]) {
             cnt++;
             sprintf(user_info, "- %d. %s\n", gr->clients[i]->uid, gr->clients[i]->name);
@@ -556,24 +545,24 @@ void info_group(char* group_id, int uid) {
 }
 
 void list_room(int uid) {
-    char* tmp = (char*)malloc(GROUP_ID_LEN + GROUP_NAME_LEN + 2);
+    char* tmp = (char*)malloc(ROOM_ID_LEN + ROOM_NAME_LEN + 2);
 
-    for (int i = 0; i < GROUP_MAX_CLIENTS * MAX_GROUPS; i++) {
+    for (int i = 0; i < ROOM_MAX_CLIENTS * MAX_ROOMS; i++) {
         // Find client
         if (clients[i] && clients[i]->uid == uid) {
             client_t* cl = (client_t*)malloc(sizeof(client_t));
             cl = clients[i];
             // Concatenate list
-            char* gr_list = (char*)malloc(8 + cl->gr_count * (GROUP_ID_LEN + GROUP_NAME_LEN + 2));
+            char* gr_list = (char*)malloc(8 + cl->gr_count * (ROOM_ID_LEN + ROOM_NAME_LEN + 2));
             sprintf(gr_list, "[ROOMS] ");
             int cnt = 0;
             int gr_cnt = cl->gr_count;
-            for (int j = 0; j < CLIENTS_MAX_GROUP; j++) {
-                if (cl->group_ids[j]) {
+            for (int j = 0; j < CLIENT_MAX_ROOMS; j++) {
+                if (cl->room_ids[j]) {
                     cnt++;
-                    sprintf(tmp, "%s\n%s\n", cl->group_names[j], cl->group_ids[j]);
+                    sprintf(tmp, "%s\n%s\n", cl->room_names[j], cl->room_ids[j]);
                     strcat(gr_list, tmp);
-                    // bzero(tmp, GROUP_ID_LEN + GROUP_NAME_LEN + 2);
+                    // bzero(tmp, ROOM_ID_LEN + ROOM_NAME_LEN + 2);
                 }
                 if (cnt == gr_cnt)
                     break;
@@ -587,26 +576,26 @@ void list_room(int uid) {
 
 // Leave a specific room
 // @return 1 if success, 0 if room doesn't exist
-int leave_group(char* group_id, client_t* cl) {
+int leave_room(char* room_id, client_t* cl) {
     pthread_mutex_lock(&clients_mutex);
 
-    group_t* gr = get_group(group_id);
+    room_t* gr = get_room(room_id);
 
     if (!gr) {
         pthread_mutex_unlock(&clients_mutex);
         return 0;
     }
 
-    for (int i = 0; i < CLIENTS_MAX_GROUP; i++) {
-        if (!strcmp(cl->group_ids[i], gr->group_id)) {
-            strcpy(cl->group_ids[i], "\0");
-            strcpy(cl->group_names[i], "\0");
+    for (int i = 0; i < CLIENT_MAX_ROOMS; i++) {
+        if (!strcmp(cl->room_ids[i], gr->room_id)) {
+            strcpy(cl->room_ids[i], "\0");
+            strcpy(cl->room_names[i], "\0");
             break;
         }
     }
 
     int cnt = 0;
-    for (int j = 0; j < GROUP_MAX_CLIENTS; j++) {
+    for (int j = 0; j < ROOM_MAX_CLIENTS; j++) {
         if (cnt == gr->cli_count) {
             break;
         }
@@ -616,15 +605,15 @@ int leave_group(char* group_id, client_t* cl) {
                 gr->clients[j] = NULL;
                 gr->cli_count--;
                 cl->gr_count--;
-                strcpy(cl->active_group, "");
+                strcpy(cl->active_room, "");
                 break;
             }
         }
     }
     // Remove room if empty
     if (gr->cli_count == 0) {
-        printf("[SYSTEM] Room ID %s removed\n", gr->group_id);
-        groups[gr->idx] = NULL;
+        printf("[SYSTEM] Room ID %s removed\n", gr->room_id);
+        rooms[gr->idx] = NULL;
         gr_count--;
 
         free(gr);
@@ -652,7 +641,7 @@ void* handle_client(void* arg) {
     }
     else {
         strcpy(cli->name, name);
-        strcpy(cli->active_group, "");
+        strcpy(cli->active_room, "");
         cli->gr_count = 0;
         printf("[SYSTEM] User %s (uid: %d) joined the server\n", cli->name, cli->uid);
     }
@@ -685,20 +674,20 @@ void* handle_client(void* arg) {
                 char* password = (char*)malloc(PASSWORD_LEN);
                 strcpy(password, param);
                 param = strtok(NULL, "\n");
-                char* name = (char*)malloc(GROUP_NAME_LEN);
+                char* name = (char*)malloc(ROOM_NAME_LEN);
                 strcpy(name, param);
                 if (password != NULL && name != NULL) {
-                    char* result = create_group(password, name);
-                    join_group(result, password, cli);
+                    char* result = create_room(password, name);
+                    join_room(result, password, cli);
 
-                    sprintf(buffer, "[SYSTEM] Group created and joined. Group ID: %s", result);
+                    sprintf(buffer, "[SYSTEM] Room created and joined. room ID: %s", result);
                     // buffer[BUFFER_SZ] = 0;
                     send_user(buffer, cli->uid);
 
                     list_room(cli->uid);
                 }
                 else {
-                    sprintf(buffer, "[SYSTEM] Please provide group password");
+                    sprintf(buffer, "[SYSTEM] Please provide room password");
                     send_user(buffer, cli->uid);
                 }
                 free(password);
@@ -714,12 +703,12 @@ void* handle_client(void* arg) {
                 }
                 // printf("Join request to %s\n", param);
                 char* pass = strtok(NULL, " \n");
-                char* gid = (char*)malloc(GROUP_ID_LEN + 1);
+                char* gid = (char*)malloc(ROOM_ID_LEN + 1);
 
                 strcpy(gid, param);
 
                 if (gid != NULL && pass != NULL) {
-                    int res = join_group(gid, pass, cli);
+                    int res = join_room(gid, pass, cli);
                     if (res == 0) {
                         sprintf(buffer, "[SYSTEM] Invalid room info");
                         send_user(buffer, cli->uid);
@@ -729,7 +718,7 @@ void* handle_client(void* arg) {
                         send_user(buffer, cli->uid);
                     }
                     else if (res == 1) {
-                        sprintf(buffer, "[SYSTEM] Joined group: %s", gid);
+                        sprintf(buffer, "[SYSTEM] Joined room: %s", gid);
                         send_user(buffer, cli->uid);
                         sprintf(buffer, "[SYSTEM] %s joined in the chat", name);
                         send_other(buffer, cli->uid, gid);
@@ -747,18 +736,18 @@ void* handle_client(void* arg) {
                 param = strtok(NULL, " \n");
                 // printf("Switch request to %s\n", param);
                 if (param != NULL) {
-                    if (!strcmp(param, cli->active_group)) {
-                        sprintf(buffer, "[SYSTEM] You are already in this group");
+                    if (!strcmp(param, cli->active_room)) {
+                        sprintf(buffer, "[SYSTEM] You are already in this room");
                         send_user(buffer, cli->uid);
                     }
                     else {
-                        int res = switch_group(param, cli);
+                        int res = switch_room(param, cli);
                         if (res) {
-                            sprintf(buffer, "[SYSTEM] Switched to group %s", cli->active_group);
+                            sprintf(buffer, "[SYSTEM] Switched to room %s", cli->active_room);
                             send_user(buffer, cli->uid);
                         }
                         else {
-                            sprintf(buffer, "[SYSTEM] Invalid group id");
+                            sprintf(buffer, "[SYSTEM] Invalid room id");
                             send_user(buffer, cli->uid);
                         }
                     }
@@ -768,21 +757,10 @@ void* handle_client(void* arg) {
                     send_user(buffer, cli->uid);
                 }
             }
-            // // :l - Go to lobby
-            // else if (!strcmp(cmd, ":lobby") || !strcmp(cmd, ":l")) {
-            //     // printf("Return to lobby request\n");
-            //     if (!strcmp(cli->active_group, "")) {
-            //         sprintf(buffer, "[SYSTEM] You are already in the lobby");
-            //         send_user(buffer, cli->uid);
-            //     }
-            //     else {
-            //         return_lobby(cli);
-            //     }
-            // }
             // :r - Rename
             else if (!strcmp(cmd, ":rename") || !strcmp(cmd, ":r")) {
-                if (!strcmp(cli->active_group, "")) {
-                    sprintf(buffer, "[SYSTEM] You are not in a group");
+                if (!strcmp(cli->active_room, "")) {
+                    sprintf(buffer, "[SYSTEM] You are not in a room");
                     send_user(buffer, cli->uid);
                 }
                 else {
@@ -793,7 +771,7 @@ void* handle_client(void* arg) {
                         // printf("Rename request to %s\n", param);
                         sprintf(buffer, "[SYSTEM] Renamed %s to %s", cli->name, name);
                         strcpy(cli->name, name);
-                        send_group(buffer, cli->active_group);
+                        send_room(buffer, cli->active_room);
                         free(name);
                     }
                     else {
@@ -804,51 +782,51 @@ void* handle_client(void* arg) {
             }
             // :l - Quit room
             else if (!strcmp(cmd, ":l")) {
-                if (!strcmp(cli->active_group, "")) {
-                    sprintf(buffer, "[SYSTEM] You are not in a group");
+                if (!strcmp(cli->active_room, "")) {
+                    sprintf(buffer, "[SYSTEM] You are not in a room");
                     send_user(buffer, cli->uid);
                 }
                 else {
                     char* gid = (char*)malloc(NAME_LEN);
-                    strcpy(gid, cli->active_group);
+                    strcpy(gid, cli->active_room);
 
                     sprintf(buffer, "[SYSTEM] %s left the room", cli->name);
                     send_other(buffer, cli->uid, gid);
                     sprintf(buffer, "[SYSTEM] Left room %s", gid);
                     send_user(buffer, cli->uid);
 
-                    leave_group(gid, cli);
+                    leave_room(gid, cli);
                     list_room(cli->uid);
                     free(gid);
                 }
             }
             // :f - Send file
             else if (!strcmp(cmd, ":file") || !strcmp(cmd, ":f")) {
-                if (!strcmp(cli->active_group, "")) {
-                    sprintf(buffer, "[SYSTEM] You are not in a group");
+                if (!strcmp(cli->active_room, "")) {
+                    sprintf(buffer, "[SYSTEM] You are not in a room");
                     send_user(buffer, cli->uid);
                 }
                 else {
                     cmd[strlen(cmd)] = ' ';
 
                     // Send file
-                    send_file(cmd + 3, cli->uid, cli->active_group);
+                    send_file(cmd + 3, cli->uid, cli->active_room);
                 }
             }
             // :i - Get room info
             else if (!strcmp(cmd, ":info") || !strcmp(cmd, ":i")) {
                 // printf("Info request\n");
-                if (!strcmp(cli->active_group, "")) {
-                    sprintf(buffer, "[SYSTEM] You are not in a group");
+                if (!strcmp(cli->active_room, "")) {
+                    sprintf(buffer, "[SYSTEM] You are not in a room");
                     send_user(buffer, cli->uid);
                 }
                 else {
-                    info_group(cli->active_group, cli->uid);
+                    info_room(cli->active_room, cli->uid);
                 }
             }
-            // In case not in a group
-            else if (!strcmp(cli->active_group, "")) {
-                sprintf(buffer, "[SYSTEM] You are not in a group");
+            // In case not in a room
+            else if (!strcmp(cli->active_room, "")) {
+                sprintf(buffer, "[SYSTEM] You are not in a room");
                 send_user(buffer, cli->uid);
                 // str_trim_lf(buffer, strlen(buffer));
             }
@@ -857,9 +835,9 @@ void* handle_client(void* arg) {
                 cmd[strlen(cmd)] = ' ';
                 char* msg = (char*)malloc(BUFFER_SZ + NAME_LEN + 3);
                 sprintf(msg, "[%s] %s", cli->name, buffer);
-                send_group(msg, cli->active_group);
+                send_room(msg, cli->active_room);
 
-                printf("[SYSTEM] Group: %s, User: %s, Message: %s\n", cli->active_group, cli->name, buffer);
+                printf("[SYSTEM] Room: %s, User: %s, Message: %s\n", cli->active_room, cli->name, buffer);
                 str_trim_lf(buffer, strlen(buffer));
 
                 free(msg);
@@ -867,9 +845,9 @@ void* handle_client(void* arg) {
         }
         else {
             printf("[SYSTEM] User %s (uid: %d) disconnected\n", cli->name, cli->uid);
-            if (strcmp(cli->active_group, "")) {
+            if (strcmp(cli->active_room, "")) {
                 sprintf(buffer, "[SYSTEM] %s disconnected", cli->name);
-                send_other(buffer, cli->uid, cli->active_group);
+                send_other(buffer, cli->uid, cli->active_room);
             }
             leave_flag = 1;
         }
@@ -878,9 +856,9 @@ void* handle_client(void* arg) {
     }
     // Close connection
     close(cli->sockfd);
-    // Remove member from group
+    // Remove member from room
     if (cli->gr_count)
-        leave_all_groups(cli);
+        leave_all_rooms(cli);
     // Remove member from server
     leave_server(cli->uid);
 

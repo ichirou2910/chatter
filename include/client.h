@@ -6,13 +6,13 @@
 #define SERVER_IP "127.0.0.1"
 #define PORT 9000
 
-#define CLIENTS_MAX_GROUP 10
-#define GROUP_MAX_MESSAGES 1000
-#define GROUP_NAME_LEN 32
-#define GROUP_ID_LEN 7
+#define CLIENT_MAX_ROOMS 10
+#define ROOM_MAX_MESSAGES 1000
+#define ROOM_NAME_LEN 32
+#define ROOM_ID_LEN 7
 #define BUFFER_SZ 1024
 #define NAME_LEN 32
-#define GROUP_ID_LEN 7
+#define ROOM_ID_LEN 7
 #define PASSWORD_LEN 32
 
 #define PAD_LENGTH 1000
@@ -25,15 +25,14 @@
 #define CYAN_TEXT 5
 
 typedef struct {
-    // char messages[GROUP_MAX_MESSAGES][BUFFER_SZ];     // Max messages allocated for one group
-    char group_id[GROUP_ID_LEN];            // Room ID
-    char group_name[GROUP_NAME_LEN];        // Room name
-} group_t;
+    // char messages[ROOM_MAX_MESSAGES][BUFFER_SZ];     // Max messages allocated for one room
+    char room_id[ROOM_ID_LEN];            // Room ID
+    char room_name[ROOM_NAME_LEN];        // Room name
+} room_t;
 
 void str_overwrite_stdout();
 void str_trim_lf(char* arr, int length);
 void catch_ctrl_c_and_exit();
-void add_group(char* gid, char* name);
 void update_room_list(char* list);
 void recv_msg_handler();
 void send_msg_handler();

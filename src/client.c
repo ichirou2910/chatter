@@ -21,7 +21,7 @@
 volatile sig_atomic_t flag = 0;
 int sockfd = 0;
 char name[NAME_LEN];
-group_t* groups[CLIENTS_MAX_GROUP];
+room_t* rooms[CLIENT_MAX_ROOMS];
 int gr_count;
 time_t now;
 struct tm* local;
@@ -197,19 +197,6 @@ void catch_ctrl_c_and_exit() {
     flag = 1;
 }
 
-void add_group(char* gid, char* name) {
-    group_t* gr = (group_t*)malloc(sizeof(group_t));
-    strcpy(gr->group_id, gid);
-    strcpy(gr->group_name, name);
-
-    for (int i = 0; i < CLIENTS_MAX_GROUP; i++) {
-        if (!groups[i]) {
-            groups[i] = gr;
-            gr_count++;
-            break;
-        }
-    }
-}
 // Print received messages
 void print_msg(char* str, int color) {
     curH = curH + 1 + strlen(str) / (PAD_VIEW_COLS);
@@ -240,18 +227,18 @@ void update_room_list(char* list) {
     int idx = 0;
     wattron(list_field, COLOR_PAIR(1));
     while (*(tokens + i)) {
-        group_t* gr = (group_t*)malloc(sizeof(group_t));
+        room_t* gr = (room_t*)malloc(sizeof(room_t));
         wprintw(list_field, "%d. %s\n", idx + 1, *(tokens + i));
-        strcpy(gr->group_name, *(tokens + i));
+        strcpy(gr->room_name, *(tokens + i));
         free(*(tokens + i));
         i++;
-        strcpy(gr->group_id, *(tokens + i));
+        strcpy(gr->room_id, *(tokens + i));
         free(*(tokens + i));
         i++;
-        if (groups[idx]) {
-            free(groups[idx]);
+        if (rooms[idx]) {
+            free(rooms[idx]);
         }
-        groups[idx] = gr;
+        rooms[idx] = gr;
         idx++;
     }
     free(tokens);
@@ -408,8 +395,8 @@ void send_msg_handler() {
                     print_msg("Positive index only!", 3);
                 }
                 else {
-                    // print_msg(groups[idx - 1]->group_id, 4);
-                    sprintf(buffer, ":s %s", groups[idx - 1]->group_id);
+                    // print_msg(rooms[idx - 1]->room_id, 4);
+                    sprintf(buffer, ":s %s", rooms[idx - 1]->room_id);
                     send(sockfd, buffer, strlen(buffer), 0);
                 }
             }
