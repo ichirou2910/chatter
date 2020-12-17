@@ -32,27 +32,32 @@ char** str_split(char* str, const char c) {
         }
         tmp++;
     }
+    if (count) {
+        /* Add space for trailing token. */
+        count += last_delim < (str + strlen(str) - 1);
 
-    /* Add space for trailing token. */
-    count += last_delim < (str + strlen(str) - 1);
+        /* Add space for terminating null string so caller
+           knows where the list of returned strings ends. */
+        count++;
 
-    /* Add space for terminating null string so caller
-       knows where the list of returned strings ends. */
-    count++;
+        result = malloc(sizeof(char*) * count);
 
-    result = malloc(sizeof(char*) * count);
+        if (result) {
+            size_t idx = 0;
+            char* token = strtok(str, delim);
 
-    if (result) {
-        size_t idx = 0;
-        char* token = strtok(str, delim);
-
-        while (token) {
-            assert(idx < count);
-            *(result + idx++) = strdup(token);
-            token = strtok(0, delim);
+            while (token) {
+                assert(idx < count);
+                *(result + idx++) = strdup(token);
+                token = strtok(0, delim);
+            }
+            assert(idx == count - 1);
+            *(result + idx) = 0;
         }
-        assert(idx == count - 1);
-        *(result + idx) = 0;
+    }
+    else {
+        result = malloc(sizeof(char*));
+        result[0] = "";
     }
 
     return result;
