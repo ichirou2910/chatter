@@ -16,8 +16,8 @@
 #define PASSWORD_LEN 32
 
 #define PAD_LENGTH 1000
-#define PAD_VIEW_ROWS maxY - 10
-#define PAD_VIEW_COLS maxX - 7
+#define PAD_VIEW_ROWS screen_cols - 10
+#define PAD_VIEW_COLS screen_rows - 7
 #define BLUE_TEXT 1
 #define YELLOW_TEXT 2
 #define RED_TEXT 3
@@ -36,7 +36,7 @@ void catch_ctrl_c_and_exit();
 void update_room_list(char* list);
 void recv_msg_handler();
 void send_msg_handler();
-void auto_scroll(int curH);
+void auto_scroll(int chat_pad_height);
 
 // === PRINT STUFF
 void print_msg(char* str, int color); // Print a message

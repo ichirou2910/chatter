@@ -18,7 +18,7 @@
 #include <libgen.h>
 
 static _Atomic unsigned int cli_count = 0;
-static _Atomic unsigned int gr_count = 0;
+static _Atomic unsigned int rm_count = 0;
 static int uid = 10;
 
 client_t* clients[MAX_ROOMS * ROOM_MAX_CLIENTS];
@@ -173,20 +173,20 @@ void print_ip_addr(struct sockaddr_in addr) {
 void send_room(char* s, char* room_id) {
     pthread_mutex_lock(&clients_mutex);
 
-    room_t* gr = get_room(room_id);
-    if (!gr) {
+    room_t* rm = get_room(room_id);
+    if (!rm) {
         printf("An error occured\n");
         return;
     }
 
-    int count = gr->cli_count;
+    int count = rm->cli_count;
     for (int i = 0; i < ROOM_MAX_CLIENTS; i++) {
         if (count == 0) {
             break;
         }
-        if (gr->clients[i]) {
+        if (rm->clients[i]) {
             count--;
-            if (!strcmp(gr->clients[i]->active_room, room_id) && write(gr->clients[i]->sockfd, s, strlen(s)) < 0) {
+            if (!strcmp(rm->clients[i]->active_room, room_id) && write(rm->clients[i]->sockfd, s, strlen(s)) < 0) {
                 printf("ERROR: write to descriptor failed\n");
                 break;
             }
@@ -219,21 +219,21 @@ void send_user(char* s, int uid) {
 void send_other(char* s, int uid, char* room_id) {
     pthread_mutex_lock(&clients_mutex);
 
-    room_t* gr = get_room(room_id);
-    if (!gr) {
+    room_t* rm = get_room(room_id);
+    if (!rm) {
         printf("An error occured\n");
         return;
     }
 
-    int count = gr->cli_count;
+    int count = rm->cli_count;
     for (int i = 0; i < ROOM_MAX_CLIENTS; i++) {
         if (count == 0) {
             break;
         }
-        if (gr->clients[i]) {
+        if (rm->clients[i]) {
             count--;
-            if (gr->clients[i]->uid != uid) {
-                if (!strcmp(gr->clients[i]->active_room, room_id) && write(gr->clients[i]->sockfd, s, strlen(s)) < 0) {
+            if (rm->clients[i]->uid != uid) {
+                if (!strcmp(rm->clients[i]->active_room, room_id) && write(rm->clients[i]->sockfd, s, strlen(s)) < 0) {
                     printf("ERROR: write to descriptor failed\n");
                     break;
                 }
@@ -251,23 +251,23 @@ void send_file(char* path, int uid, char* room_id) {
     char* filename = basename(path);
 
     // Cache receiver
-    room_t* gr = get_room(room_id);
-    if (!gr) {
+    room_t* rm = get_room(room_id);
+    if (!rm) {
         printf("An error occured\n");
         return;
     }
 
-    int count = gr->cli_count;
+    int count = rm->cli_count;
     int idx[count - 1];
     int idx_cnt = 0;
     for (int i = 0; i < ROOM_MAX_CLIENTS; i++) {
         if (count == 0) {
             break;
         }
-        if (gr->clients[i]) {
+        if (rm->clients[i]) {
             count--;
-            if (gr->clients[i]->uid != uid) {
-                idx[idx_cnt++] = gr->clients[i]->sockfd;
+            if (rm->clients[i]->uid != uid) {
+                idx[idx_cnt++] = rm->clients[i]->sockfd;
             }
         }
     }
@@ -287,7 +287,7 @@ void send_file(char* path, int uid, char* room_id) {
 
     // Notify of file transmission
     char msg[15 + strlen(filename) + 1];
-    for (int i = 0; i < gr->cli_count - 1; i++) {
+    for (int i = 0; i < rm->cli_count - 1; i++) {
         sprintf(msg, "[SYSTEM] File: %s", filename);
         write(idx[i], msg, strlen(msg));
         // sprintf(msg, "%ld", file_stat.st_size);
@@ -298,7 +298,7 @@ void send_file(char* path, int uid, char* room_id) {
     // int pck_cnt = 0;
     while ((bufLen = read(fd, fileBuf, BUFFER_SZ)) > 0) {
         // printf("%d - Current bufLen: %d\n", pck_cnt++, bufLen);
-        for (int i = 0; i < gr->cli_count - 1; i++) {
+        for (int i = 0; i < rm->cli_count - 1; i++) {
             write(idx[i], fileBuf, bufLen);
         }
         if (bufLen == 0 || bufLen != BUFFER_SZ) {
@@ -317,21 +317,21 @@ void send_file(char* path, int uid, char* room_id) {
 // Check if NAME is used in room_ID
 // @return -1 if room not found, 1 if used, 0 if not used
 int check_used_name(char* name, char* room_id) {
-    room_t* gr = get_room(room_id);
+    room_t* rm = get_room(room_id);
 
-    if (!gr) {
+    if (!rm) {
         printf("[SYSTEM] room not found\n");
         return -1;
     }
 
     int count = 0;
     for (int i = 0; i < ROOM_MAX_CLIENTS; i++) {
-        if (count == gr->cli_count) {
+        if (count == rm->cli_count) {
             return 0;
         }
-        if (gr->clients[i]) {
+        if (rm->clients[i]) {
             count++;
-            if (!strcmp(gr->clients[i]->name, name))
+            if (!strcmp(rm->clients[i]->name, name))
                 return 1;
         }
     }
@@ -376,18 +376,18 @@ char* create_room(char* password, char* name) {
     pthread_mutex_lock(&clients_mutex);
 
     char* id = rand_string(ROOM_ID_LEN);
-    room_t* gr = (room_t*)malloc(sizeof(room_t));
-    gr->cli_count = 0;
-    gr->mes_count = 0;
-    strcpy(gr->room_id, id);
-    strcpy(gr->password, password);
-    strcpy(gr->room_name, name);
+    room_t* rm = (room_t*)malloc(sizeof(room_t));
+    rm->cli_count = 0;
+    rm->mes_count = 0;
+    strcpy(rm->room_id, id);
+    strcpy(rm->password, password);
+    strcpy(rm->room_name, name);
 
     for (int i = 0; i < MAX_ROOMS; i++) {
         if (!rooms[i]) {
-            rooms[i] = gr;
-            gr->idx = i;
-            gr_count++;
+            rooms[i] = rm;
+            rm->idx = i;
+            rm_count++;
             printf("[SYSTEM] Created new room: %s - %s - %s\n", id, password, name);
             pthread_mutex_unlock(&clients_mutex);
             return id;
@@ -446,7 +446,7 @@ int join_room(char* room_id, char* password, client_t* cl) {
                     strcpy(cl->room_ids[k], rooms[i]->room_id);
                     strcpy(cl->room_names[k], rooms[i]->room_name);
                     strcpy(cl->active_room, room_id); // Switch focus to newly joined room
-                    cl->gr_count++;
+                    cl->rm_count++;
                     pthread_mutex_unlock(&clients_mutex);
                     return 1;
                 }
@@ -468,7 +468,7 @@ int switch_room(char* room_id, client_t* cl) {
             strcpy(cl->active_room, room_id);
             return 1;
         }
-        else if (cnt == cl->gr_count) {
+        else if (cnt == cl->rm_count) {
             break;
         }
         else {
@@ -487,27 +487,27 @@ void return_lobby(client_t* cl) {
 void leave_all_rooms(client_t* cl) {
     pthread_mutex_lock(&clients_mutex);
 
-    for (int i = 0; i < cl->gr_count; i++) {
+    for (int i = 0; i < cl->rm_count; i++) {
         // Remove member from room
         if (cl->room_ids[i][0] != 0) {
-            room_t* gr = get_room(cl->room_ids[i]);
+            room_t* rm = get_room(cl->room_ids[i]);
             // printf("Quit: %s\n", cl->room_ids[i]);
-            for (int j = 0; j < gr->cli_count; j++) {
-                if (gr->clients[j]) {
-                    if (gr->clients[j]->uid == cl->uid) {
-                        gr->clients[j] = NULL;
-                        gr->cli_count--;
+            for (int j = 0; j < rm->cli_count; j++) {
+                if (rm->clients[j]) {
+                    if (rm->clients[j]->uid == cl->uid) {
+                        rm->clients[j] = NULL;
+                        rm->cli_count--;
                         break;
                     }
                 }
             }
             // Remove room if empty
-            if (gr->cli_count == 0) {
-                printf("[SYSTEM] Room ID %s removed\n", gr->room_id);
-                rooms[gr->idx] = NULL;
-                gr_count--;
+            if (rm->cli_count == 0) {
+                printf("[SYSTEM] Room ID %s removed\n", rm->room_id);
+                rooms[rm->idx] = NULL;
+                rm_count--;
 
-                free(gr);
+                free(rm);
             }
         }
     }
@@ -516,22 +516,22 @@ void leave_all_rooms(client_t* cl) {
 }
 
 void info_room(char* room_id, int uid) {
-    room_t* gr = get_room(room_id);
+    room_t* rm = get_room(room_id);
 
     // Allocate size for the message
     // Size = General info size + padding + (name size + padding) * mem count
-    int size = 75 + PASSWORD_LEN + ROOM_ID_LEN + (NAME_LEN + 8) * gr->cli_count;
+    int size = 76 + PASSWORD_LEN + ROOM_ID_LEN + (NAME_LEN + 8) * rm->cli_count;
     char* buffer = (char*)malloc(size);
 
-    sprintf(buffer, "[INFO] Room ID: %s\n===\nRoom info:\n- Password: %s\n- Members: %d\n===\nMembers info:\n", room_id, gr->password, gr->cli_count);
+    sprintf(buffer, "[INFO] Room ID: %s\n===\nRoom info:\n- Password: %s\n- Members: %d\n===\nMembers info:\n", room_id, rm->password, rm->cli_count);
 
     int cnt = 0;
-    int mem_cnt = gr->cli_count;
-    char* user_info = (char*)malloc(NAME_LEN + 7);
+    int mem_cnt = rm->cli_count;
+    char* user_info = (char*)malloc(NAME_LEN + 8);
     for (int i = 0; i < ROOM_MAX_CLIENTS; i++) {
-        if (gr->clients[i]) {
+        if (rm->clients[i]) {
             cnt++;
-            sprintf(user_info, "- %d. %s\n", gr->clients[i]->uid, gr->clients[i]->name);
+            sprintf(user_info, "- %d. %s\n", rm->clients[i]->uid, rm->clients[i]->name);
             // send_user(buffer, uid);
             strcat(buffer, user_info);
         }
@@ -545,7 +545,7 @@ void info_room(char* room_id, int uid) {
 }
 
 void list_room(int uid) {
-    char* tmp = (char*)malloc(ROOM_ID_LEN + ROOM_NAME_LEN + 2);
+    char* tmp = (char*)malloc(ROOM_ID_LEN + ROOM_NAME_LEN + 3);
 
     for (int i = 0; i < ROOM_MAX_CLIENTS * MAX_ROOMS; i++) {
         // Find client
@@ -553,20 +553,23 @@ void list_room(int uid) {
             client_t* cl = (client_t*)malloc(sizeof(client_t));
             cl = clients[i];
             // Concatenate list
-            char* gr_list = (char*)malloc(8 + cl->gr_count * (ROOM_ID_LEN + ROOM_NAME_LEN + 2));
+            char* gr_list = (char*)malloc(9 + cl->rm_count * (ROOM_ID_LEN + ROOM_NAME_LEN + 2));
             sprintf(gr_list, "[ROOMS] ");
-            int cnt = 0;
-            int gr_cnt = cl->gr_count;
-            for (int j = 0; j < CLIENT_MAX_ROOMS; j++) {
-                if (cl->room_ids[j]) {
-                    cnt++;
-                    sprintf(tmp, "%s\n%s\n", cl->room_names[j], cl->room_ids[j]);
-                    strcat(gr_list, tmp);
-                    // bzero(tmp, ROOM_ID_LEN + ROOM_NAME_LEN + 2);
+            if (cl->rm_count != 0) {
+                int cnt = 0;
+                int gr_cnt = cl->rm_count;
+                for (int j = 0; j < CLIENT_MAX_ROOMS; j++) {
+                    if (cnt == gr_cnt)
+                        break;
+                    if (cl->room_ids[j]) {
+                        cnt++;
+                        sprintf(tmp, "%s\n%s\n", cl->room_names[j], cl->room_ids[j]);
+                        strcat(gr_list, tmp);
+                        // bzero(tmp, ROOM_ID_LEN + ROOM_NAME_LEN + 2);
+                    }
                 }
-                if (cnt == gr_cnt)
-                    break;
             }
+            // printf("List: %s", gr_list);
             send_user(gr_list, uid);
             free(gr_list);
             free(tmp);
@@ -579,15 +582,15 @@ void list_room(int uid) {
 int leave_room(char* room_id, client_t* cl) {
     pthread_mutex_lock(&clients_mutex);
 
-    room_t* gr = get_room(room_id);
+    room_t* rm = get_room(room_id);
 
-    if (!gr) {
+    if (!rm) {
         pthread_mutex_unlock(&clients_mutex);
         return 0;
     }
 
     for (int i = 0; i < CLIENT_MAX_ROOMS; i++) {
-        if (!strcmp(cl->room_ids[i], gr->room_id)) {
+        if (!strcmp(cl->room_ids[i], rm->room_id)) {
             strcpy(cl->room_ids[i], "\0");
             strcpy(cl->room_names[i], "\0");
             break;
@@ -596,27 +599,27 @@ int leave_room(char* room_id, client_t* cl) {
 
     int cnt = 0;
     for (int j = 0; j < ROOM_MAX_CLIENTS; j++) {
-        if (cnt == gr->cli_count) {
+        if (cnt == rm->cli_count) {
             break;
         }
-        if (gr->clients[j]) {
+        if (rm->clients[j]) {
             cnt++;
-            if (gr->clients[j]->uid == cl->uid) {
-                gr->clients[j] = NULL;
-                gr->cli_count--;
-                cl->gr_count--;
+            if (rm->clients[j]->uid == cl->uid) {
+                rm->clients[j] = NULL;
+                rm->cli_count--;
+                cl->rm_count--;
                 strcpy(cl->active_room, "");
                 break;
             }
         }
     }
     // Remove room if empty
-    if (gr->cli_count == 0) {
-        printf("[SYSTEM] Room ID %s removed\n", gr->room_id);
-        rooms[gr->idx] = NULL;
-        gr_count--;
+    if (rm->cli_count == 0) {
+        printf("[SYSTEM] Room ID %s removed\n", rm->room_id);
+        rooms[rm->idx] = NULL;
+        rm_count--;
 
-        free(gr);
+        free(rm);
     }
 
     pthread_mutex_unlock(&clients_mutex);
@@ -642,7 +645,7 @@ void* handle_client(void* arg) {
     else {
         strcpy(cli->name, name);
         strcpy(cli->active_room, "");
-        cli->gr_count = 0;
+        cli->rm_count = 0;
         printf("[SYSTEM] User %s (uid: %d) joined the server\n", cli->name, cli->uid);
     }
 
@@ -671,10 +674,10 @@ void* handle_client(void* arg) {
             // :c - Create room
             else if (!strcmp(cmd, ":c")) {
                 param = strtok(NULL, " \n");
-                char* password = (char*)malloc(PASSWORD_LEN);
+                char* password = (char*)malloc(PASSWORD_LEN + 1);
                 strcpy(password, param);
                 param = strtok(NULL, "\n");
-                char* name = (char*)malloc(ROOM_NAME_LEN);
+                char* name = (char*)malloc(ROOM_NAME_LEN + 1);
                 strcpy(name, param);
                 if (password != NULL && name != NULL) {
                     char* result = create_room(password, name);
@@ -766,7 +769,7 @@ void* handle_client(void* arg) {
                 else {
                     param = strtok(NULL, " \n");
                     if (param != NULL) {
-                        char* name = (char*)malloc(NAME_LEN);
+                        char* name = (char*)malloc(NAME_LEN + 1);
                         strcpy(name, param);
                         // printf("Rename request to %s\n", param);
                         sprintf(buffer, "[SYSTEM] Renamed %s to %s", cli->name, name);
@@ -780,14 +783,14 @@ void* handle_client(void* arg) {
                     }
                 }
             }
-            // :l - Quit room
-            else if (!strcmp(cmd, ":l")) {
+            // :q - Quit room
+            else if (!strcmp(cmd, ":q")) {
                 if (!strcmp(cli->active_room, "")) {
                     sprintf(buffer, "[SYSTEM] You are not in a room");
                     send_user(buffer, cli->uid);
                 }
                 else {
-                    char* gid = (char*)malloc(NAME_LEN);
+                    char* gid = (char*)malloc(NAME_LEN + 1);
                     strcpy(gid, cli->active_room);
 
                     sprintf(buffer, "[SYSTEM] %s left the room", cli->name);
@@ -833,7 +836,7 @@ void* handle_client(void* arg) {
             // A normal message
             else {
                 cmd[strlen(cmd)] = ' ';
-                char* msg = (char*)malloc(BUFFER_SZ + NAME_LEN + 3);
+                char* msg = (char*)malloc(BUFFER_SZ + NAME_LEN + 4);
                 sprintf(msg, "[%s] %s", cli->name, buffer);
                 send_room(msg, cli->active_room);
 
@@ -857,7 +860,7 @@ void* handle_client(void* arg) {
     // Close connection
     close(cli->sockfd);
     // Remove member from room
-    if (cli->gr_count)
+    if (cli->rm_count)
         leave_all_rooms(cli);
     // Remove member from server
     leave_server(cli->uid);

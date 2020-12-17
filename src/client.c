@@ -22,16 +22,17 @@ volatile sig_atomic_t flag = 0;
 int sockfd = 0;
 char name[NAME_LEN];
 room_t* rooms[CLIENT_MAX_ROOMS];
-int gr_count;
+int rm_count;
 time_t now;
 struct tm* local;
 
-WINDOW* chatbox, * chat_field;
-WINDOW* listbox, * list_field;
-WINDOW* input, * input_field;
-int maxX, maxY;
-int curX, curY, curH;
-int padX, padY;
+WINDOW* chat_window, * chat_pad;
+WINDOW* room_list_window, * room_list_pad;
+WINDOW* input_window, * input_pad;
+int screen_rows, screen_cols;
+int mouse_row, mouse_col;
+int chat_pad_height;
+int room_list_pad_row, room_list_pad_col;
 int chat_mode = 0;
 int ch;
 
@@ -90,63 +91,63 @@ int main() {
     init_pair(CYAN_TEXT, COLOR_CYAN, -1);
 
     // Get max size of terminal
-    getmaxyx(stdscr, maxY, maxX);
+    getmaxyx(stdscr, screen_cols, screen_rows);
 
     // Initialize windows
-    chatbox = newwin(maxY - 10, maxX - 40, 2, 35);
-    chat_field = newpad(PAD_LENGTH, maxX - 42);
-    input = newwin(7, maxX - 40, maxY - 8, 35);
-    input_field = derwin(input, 4, maxX - 42, 2, 1);
-    listbox = newwin(maxY - 3, 30, 2, 5);
-    list_field = newpad(PAD_LENGTH, maxX - 5);
-    padX = 0;
-    padY = 0;
-    curH = 4;
+    chat_window = newwin(screen_cols - 10, screen_rows - 40, 2, 35);
+    chat_pad = newpad(PAD_LENGTH, screen_rows - 42);
+    input_window = newwin(7, screen_rows - 40, screen_cols - 8, 35);
+    input_pad = derwin(input_window, 4, screen_rows - 42, 2, 1);
+    room_list_window = newwin(screen_cols - 3, 30, 2, 5);
+    room_list_pad = newpad(PAD_LENGTH, screen_rows - 5);
+    room_list_pad_row = 0;
+    room_list_pad_col = 0;
+    chat_pad_height = 4;
 
     // Draw window borders
-    box(chatbox, 0, 0);
-    box(input, 0, 0);
-    box(listbox, 0, 0);
+    box(chat_window, 0, 0);
+    box(input_window, 0, 0);
+    box(room_list_window, 0, 0);
 
-    scrollok(chat_field, TRUE);
+    scrollok(chat_pad, TRUE);
 
     // Enable keypad for input
-    keypad(input_field, TRUE);
+    keypad(input_pad, TRUE);
 
     refresh();
-    wrefresh(chatbox);
-    wrefresh(input);
-    wrefresh(listbox);
+    wrefresh(chat_window);
+    wrefresh(input_window);
+    wrefresh(room_list_window);
 
     send(sockfd, name, NAME_LEN, 0);
 
     // Welcome text
-    wattron(chat_field, COLOR_PAIR(1));
-    waddstr(chat_field, "=== WELCOME TO CHATTER ===\n");
-    wprintw(chat_field, "Current time: %s", ctime(&now));
-    waddstr(chat_field, "Type :h or :help for Chatter commands\n");
-    wattroff(chat_field, COLOR_PAIR(1));
+    wattron(chat_pad, COLOR_PAIR(1));
+    waddstr(chat_pad, "=== WELCOME TO CHATTER ===\n");
+    wprintw(chat_pad, "Current time: %s", ctime(&now));
+    waddstr(chat_pad, "Type :h or :help for Chatter commands\n");
+    wattroff(chat_pad, COLOR_PAIR(1));
 
-    prefresh(chat_field, padX, padY, 4, 36, PAD_VIEW_ROWS, PAD_VIEW_COLS);
+    prefresh(chat_pad, room_list_pad_row, room_list_pad_col, 4, 36, PAD_VIEW_ROWS, PAD_VIEW_COLS);
 
     // Initial List room
     // TODO: Fix position
-    // wattron(listbox, COLOR_PAIR(1));
-    mvwaddstr(chatbox, 0, 2, " CHATBOX ");
-    mvwaddstr(listbox, 0, 2, " ROOMS ");
-    mvwaddstr(input, 0, 2, " MESSAGE ");
-    // wattroff(listbox, COLOR_PAIR(1));
+    // wattron(room_list_window, COLOR_PAIR(1));
+    mvwaddstr(chat_window, 0, 2, " CHATBOX ");
+    mvwaddstr(room_list_window, 0, 2, " ROOMS ");
+    mvwaddstr(input_window, 0, 2, " MESSAGE ");
+    // wattroff(room_list_window, COLOR_PAIR(1));
 
-    wrefresh(listbox);
-    wrefresh(chatbox);
-    wrefresh(input);
+    wrefresh(room_list_window);
+    wrefresh(chat_window);
+    wrefresh(input_window);
 
     // Testing
-    // wattron(list_field, COLOR_PAIR(1));
-    // waddstr(list_field, "1. The Normies\n");
-    // wattroff(list_field, COLOR_PAIR(1));
+    // wattron(room_list_pad, COLOR_PAIR(1));
+    // waddstr(room_list_pad, "1. The Normies\n");
+    // wattroff(room_list_pad, COLOR_PAIR(1));
 
-    // prefresh(list_field, padX, padY, 4, 6, maxY - 3, 30);
+    // prefresh(room_list_pad, room_list_pad_row, room_list_pad_col, 4, 6, screen_cols - 3, 30);
 
     // Thread for sending the messages
     pthread_t send_msg_thread;
@@ -177,10 +178,10 @@ int main() {
 }
 
 void str_overwrite_stdout() {
-    wattron(input_field, COLOR_PAIR(4));
-    wprintw(input_field, "\r%s", "> ");
-    wattroff(input_field, COLOR_PAIR(4));
-    wrefresh(input_field);
+    wattron(input_pad, COLOR_PAIR(4));
+    wprintw(input_pad, "\r%s", "> ");
+    wattroff(input_pad, COLOR_PAIR(4));
+    wrefresh(input_pad);
     fflush(stdout);
 }
 
@@ -199,14 +200,14 @@ void catch_ctrl_c_and_exit() {
 
 // Print received messages
 void print_msg(char* str, int color) {
-    curH = curH + 1 + strlen(str) / (PAD_VIEW_COLS);
-    wattron(chat_field, COLOR_PAIR(color));
-    wprintw(chat_field, "%s\n", str);
-    wattroff(chat_field, COLOR_PAIR(color));
-    auto_scroll(curH);
+    chat_pad_height = chat_pad_height + 1 + strlen(str) / (PAD_VIEW_COLS);
+    wattron(chat_pad, COLOR_PAIR(color));
+    wprintw(chat_pad, "%s\n", str);
+    wattroff(chat_pad, COLOR_PAIR(color));
+    auto_scroll(chat_pad_height);
 
     // prefresh(window);
-    prefresh(chat_field, padX, padY, 4, 36, PAD_VIEW_ROWS, PAD_VIEW_COLS);
+    prefresh(chat_pad, room_list_pad_row, room_list_pad_col, 4, 36, PAD_VIEW_ROWS, PAD_VIEW_COLS);
 }
 
 void print_info(char* info) {
@@ -220,36 +221,38 @@ void print_info(char* info) {
 
 void update_room_list(char* list) {
     // Clear List
-    wclear(list_field);
-    // Generate tokens
-    char** tokens = str_split(list, '\n');
-    int i = 0;
-    int idx = 0;
-    wattron(list_field, COLOR_PAIR(1));
-    while (*(tokens + i)) {
-        room_t* gr = (room_t*)malloc(sizeof(room_t));
-        wprintw(list_field, "%d. %s\n", idx + 1, *(tokens + i));
-        strcpy(gr->room_name, *(tokens + i));
-        free(*(tokens + i));
-        i++;
-        strcpy(gr->room_id, *(tokens + i));
-        free(*(tokens + i));
-        i++;
-        if (rooms[idx]) {
-            free(rooms[idx]);
+    wclear(room_list_pad);
+    if (list != NULL) {
+        // Generate tokens
+        char** tokens = str_split(list, '\n');
+        int i = 0;
+        int idx = 0;
+        wattron(room_list_pad, COLOR_PAIR(1));
+        while (*(tokens + i)) {
+            room_t* gr = (room_t*)malloc(sizeof(room_t));
+            wprintw(room_list_pad, "%d. %s\n", idx + 1, *(tokens + i));
+            strcpy(gr->room_name, *(tokens + i));
+            free(*(tokens + i));
+            i++;
+            strcpy(gr->room_id, *(tokens + i));
+            free(*(tokens + i));
+            i++;
+            if (rooms[idx]) {
+                free(rooms[idx]);
+            }
+            rooms[idx] = gr;
+            idx++;
         }
-        rooms[idx] = gr;
-        idx++;
+        free(tokens);
+        wattroff(room_list_pad, COLOR_PAIR(1));
     }
-    free(tokens);
-    wattroff(list_field, COLOR_PAIR(1));
-    prefresh(list_field, padX, padY, 4, 6, maxY - 3, 30);
+    prefresh(room_list_pad, room_list_pad_row, room_list_pad_col, 4, 6, screen_cols - 3, 30);
 }
 
 // Auto scroll down if necessary when a new message comes
-void auto_scroll(int curH) {
-    if (curH > maxY - 12 + padX) {
-        padX = curH - maxY + 12;
+void auto_scroll(int chat_pad_height) {
+    if (chat_pad_height > screen_cols - 12 + room_list_pad_row) {
+        room_list_pad_row = chat_pad_height - screen_cols + 12;
     }
 }
 
@@ -317,12 +320,12 @@ void recv_msg_handler() {
                     if (!strncmp(buffer, "[SYSTEM]", 8)) {
                         color = 3;
                     }
-                    getyx(input_field, curY, curX);
+                    getyx(input_pad, mouse_col, mouse_row);
                     time(&now);
                     local = localtime(&now);
                     sprintf(message, "%02d:%02d ~ %s", local->tm_hour, local->tm_min, buffer);
                     print_msg(message, color);
-                    wmove(input_field, curY, curX);
+                    wmove(input_pad, mouse_col, mouse_row);
                     // str_overwrite_stdout();
                 }
                 str_overwrite_stdout();
@@ -344,31 +347,31 @@ void send_msg_handler() {
         str_overwrite_stdout();
         // do {
         //     noecho();
-        //     ch = wgetch(input_field);
-        //     wrefresh(input_field);
+        //     ch = wgetch(input_pad);
+        //     wrefresh(input_pad);
         //     switch (ch) {
         //     case KEY_UP:
-        //         if (padX > 0)
-        //             padX--;
-        //         prefresh(chat_field, padX, padY, 4, 6, PAD_VIEW_ROWS, PAD_VIEW_COLS);
+        //         if (room_list_pad_row > 0)
+        //             room_list_pad_row--;
+        //         prefresh(chat_pad, room_list_pad_row, room_list_pad_col, 4, 6, PAD_VIEW_ROWS, PAD_VIEW_COLS);
         //         break;
         //         // Don't let use scroll to far
         //     case KEY_DOWN:
-        //         if (padX < curH - maxY + 13 && padX < PAD_LENGTH)
-        //             padX++;
-        //         prefresh(chat_field, padX, padY, 4, 6, PAD_VIEW_ROWS, PAD_VIEW_COLS);
+        //         if (room_list_pad_row < chat_pad_height - screen_cols + 13 && room_list_pad_row < PAD_LENGTH)
+        //             room_list_pad_row++;
+        //         prefresh(chat_pad, room_list_pad_row, room_list_pad_col, 4, 6, PAD_VIEW_ROWS, PAD_VIEW_COLS);
         //         break;
         //     case 'i':
         //         echo();
-        //         wgetnstr(input_field, buffer, BUFFER_SZ);
+        //         wgetnstr(input_pad, buffer, BUFFER_SZ);
         //         break;
         //     default:
         //         break;
         //     }
         // } while (ch != 'i');
-        wgetnstr(input_field, buffer, BUFFER_SZ);
-        wclear(input_field);
-        wrefresh(input_field);
+        wgetnstr(input_pad, buffer, BUFFER_SZ);
+        wclear(input_pad);
+        wrefresh(input_pad);
 
         str_trim_lf(buffer, BUFFER_SZ);
 
@@ -395,9 +398,13 @@ void send_msg_handler() {
                     print_msg("Positive index only!", 3);
                 }
                 else {
-                    // print_msg(rooms[idx - 1]->room_id, 4);
-                    sprintf(buffer, ":s %s", rooms[idx - 1]->room_id);
-                    send(sockfd, buffer, strlen(buffer), 0);
+                    if (rooms[idx - 1]) {
+                        sprintf(buffer, ":s %s", rooms[idx - 1]->room_id);
+                        send(sockfd, buffer, strlen(buffer), 0);
+                    }
+                    else {
+                        print_msg("Room doesn't exist!", 3);
+                    }
                 }
             }
             else {

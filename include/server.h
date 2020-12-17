@@ -24,7 +24,7 @@ typedef struct {
     char room_ids[CLIENT_MAX_ROOMS][ROOM_ID_LEN];   // Joined rooms
     char room_names[CLIENT_MAX_ROOMS][ROOM_NAME_LEN];   // Joined groups' names
     char active_room[ROOM_ID_LEN];  // Current active group
-    int gr_count;   // Room count
+    int rm_count;   // Room count
 } client_t;
 
 typedef struct {
