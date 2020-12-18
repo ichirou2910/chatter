@@ -213,7 +213,7 @@ void send_room(char* s, char* room_id) {
 void send_user(char* s, int uid) {
     pthread_mutex_lock(&clients_mutex);
 
-    s[strlen(s)] = 0;
+    // s[strlen(s)] = 0;
     for (int i = 0; i < ROOM_MAX_CLIENTS * MAX_ROOMS; i++) {
         // Prevent looping through all 100 clients
         if (clients[i]->uid == uid) {
@@ -389,6 +389,10 @@ room_t* get_room(char* room_id) {
 char* create_room(char* password, char* name) {
     pthread_mutex_lock(&clients_mutex);
 
+    // Truncate input
+    name[ROOM_NAME_LEN] = 0;
+    password[PASSWORD_LEN] = 0;
+
     char* id = rand_string(ROOM_ID_LEN);
     room_t* rm = (room_t*)malloc(sizeof(room_t));
     rm->cli_count = 0;
@@ -396,6 +400,11 @@ char* create_room(char* password, char* name) {
     strcpy(rm->room_id, id);
     strcpy(rm->password, password);
     strcpy(rm->room_name, name);
+    printf("Created Pass: \n");
+    for (int i = 0; i < PASSWORD_LEN; i++) {
+        printf("%d ", password[i]);
+    }
+    printf("\n");
 
     for (int i = 0; i < MAX_ROOMS; i++) {
         if (!rooms[i]) {
@@ -416,12 +425,22 @@ char* create_room(char* password, char* name) {
 // @return 1 if success, 0 if wrong info, -1 if already joined 
 int join_room(char* room_id, char* password, client_t* cl) {
     pthread_mutex_lock(&clients_mutex);
+
+    // Truncate input
+    room_id[ROOM_ID_LEN] = 0;
+    password[PASSWORD_LEN] = 0;
+
+    // printf("Join to ID: %s - %s\n", room_id, password);
+
     for (int i = 0; i < MAX_ROOMS; i++) {
+        // if (rooms[i]) {
+        //     printf("Name: %s, ID: %s, Pass: %s\n", rooms[i]->room_name, rooms[i]->room_id, rooms[i]->password);
+        // }
         if (rooms[i] &&
             !strcmp(rooms[i]->room_id, room_id) &&
             !strcmp(rooms[i]->password, password)) {
 
-
+            printf("Target room name: %s\n", rooms[i]->room_name);
             int idx = -1;
             int cnt = 0;
             int mem_cnt = rooms[i]->cli_count;
@@ -716,14 +735,19 @@ void* handle_client(void* arg) {
             else if (!strcmp(cmd, ":c")) {
                 // Get parameters
                 param = strtok(NULL, " \n");
-                char* password = (char*)malloc(PASSWORD_LEN + 1);
+                char* password = (char*)malloc(PASSWORD_LEN * sizeof(char) + 1);
                 strcpy(password, param);
                 param = strtok(NULL, "\n");
-                char* name = (char*)malloc(ROOM_NAME_LEN + 1);
+                char* name = (char*)malloc(ROOM_NAME_LEN * sizeof(char) + 1);
                 strcpy(name, param);
 
                 if (password != NULL && name != NULL) {
                     char* result = create_room(password, name);
+                    printf("Result Pass: \n");
+                    for (int i = 0; i < PASSWORD_LEN; i++) {
+                        printf("%d ", password[i]);
+                    }
+                    printf("\n");
                     join_room(result, password, cli);
 
                     // sprintf(buffer, "[SYSTEM] Room created and joined. room ID: %s", result);
@@ -814,6 +838,7 @@ void* handle_client(void* arg) {
                     if (param != NULL) {
                         char* name = (char*)malloc(NAME_LEN + 1);
                         strcpy(name, param);
+                        name[NAME_LEN] = 0; // Truncate
                         // printf("Rename request to %s\n", param);
                         sprintf(buffer, "[SYSTEM] Renamed %s to %s", cli->name, name);
                         strcpy(cli->name, name);
