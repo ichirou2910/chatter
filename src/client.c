@@ -270,7 +270,7 @@ void update_room_list(char* list) {
         wattron(room_list_pad, COLOR_PAIR(1));
         while (*(tokens + i)) {
             room_t* gr = (room_t*)malloc(sizeof(room_t));
-            wprintw(room_list_pad, "%d. %s\n", idx + 1, *(tokens + i));
+            mvwprintw(room_list_pad, idx * 2, 0, "%d. %s\n", idx + 1, *(tokens + i));
             strcpy(gr->room_name, *(tokens + i));
             free(*(tokens + i));
             i++;
@@ -487,7 +487,7 @@ void send_msg_handler() {
                         // Mark active room in room list window
                         wclear(room_active_pad);
                         wattron(room_active_pad, COLOR_PAIR(4));
-                        mvwaddch(room_active_pad, 0, idx - 1, '*');
+                        mvwaddch(room_active_pad, (idx - 1) * 2, 0, '*');
                         wattroff(room_active_pad, COLOR_PAIR(4));
                         wrefresh(room_active_pad);
 
