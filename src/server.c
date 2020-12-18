@@ -828,7 +828,7 @@ void* handle_client(void* arg) {
                 }
             }
             // :r - Rename
-            else if (!strcmp(cmd, ":rename") || !strcmp(cmd, ":r")) {
+            else if (!strcmp(cmd, ":r")) {
                 if (!strcmp(cli->active_room, "")) {
                     sprintf(buffer, "[SYSTEM] You are not in a room");
                     send_user(buffer, cli->uid);
@@ -870,7 +870,7 @@ void* handle_client(void* arg) {
                 }
             }
             // :f - Send file
-            else if (!strcmp(cmd, ":file") || !strcmp(cmd, ":f")) {
+            else if (!strcmp(cmd, ":f")) {
                 if (!strcmp(cli->active_room, "")) {
                     sprintf(buffer, "[SYSTEM] You are not in a room");
                     send_user(buffer, cli->uid);

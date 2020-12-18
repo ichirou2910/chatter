@@ -450,17 +450,17 @@ void send_msg_handler() {
         wclear(input_pad);
         wrefresh(input_pad);
 
-        if (!strcmp(buffer, ":help") || !strcmp(buffer, ":h")) {
+        if (!strcmp(buffer, ":h")) {
             int color = 5;
             print_msg("===", color);
             print_msg("Chatter commands:", color);
-            print_msg("- :c <pass>       - CREATE a new room", color);
-            print_msg("- :j <id> <pass>  - JOIN a room", color);
-            print_msg("- :s <id>         - SWITCH to room", color);
-            print_msg("- :r <name>       - RENAME self", color);
-            print_msg("- :q              - QUIT current room", color);
-            print_msg("- :f <filename>   - Send FILE to roommate", color);
-            print_msg("- :i              - Print room INFO", color);
+            print_msg("- :c <pass> <name> - CREATE a new room", color);
+            print_msg("- :j <id> <pass>   - JOIN a room", color);
+            print_msg("- :s <id>          - SWITCH to room", color);
+            print_msg("- :r <name>        - RENAME self", color);
+            print_msg("- :q               - QUIT current room", color);
+            print_msg("- :f <path>        - Send FILE to roommate", color);
+            print_msg("- :i               - Print room INFO", color);
             print_msg("===", color);
             print_msg("Press Ctrl+C to quit Chatter", color);
         }
