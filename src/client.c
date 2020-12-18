@@ -447,7 +447,10 @@ void send_msg_handler() {
                 prefresh(chat_pad, chat_pad_row, chat_pad_col, 4, 36, PAD_VIEW_ROWS, PAD_VIEW_COLS);
                 wmove(input_pad, mouse_row, mouse_col);
                 break;
-            case 127: // Backspace
+            case 127: // Delete
+            case 8: // Backspace
+            case KEY_RIGHT:
+            case KEY_LEFT:
                 if (buflen) {
                     // update msg content
                     buffer[--buflen] = 0;
@@ -521,6 +524,8 @@ void send_msg_handler() {
             send(sockfd, buffer, strlen(buffer), 0);
         }
         else {
+            wclear(output_pad);
+            wrefresh(output_pad);
             send(sockfd, buffer, strlen(buffer), 0);
         }
         // bzero(buffer, BUFFER_SZ);
