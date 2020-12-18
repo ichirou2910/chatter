@@ -1,7 +1,5 @@
 #include "client.h"
-#include <gtk/gtk.h>
-#include <glib.h>
-#include <glib/gprintf.h>
+#include "utils.h"
 
 #include <sys/socket.h>
 #include <sys/sendfile.h>
@@ -9,6 +7,7 @@
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <ncurses.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -18,188 +17,53 @@
 #include <signal.h>
 #include <time.h>
 #include <fcntl.h>
+#include <locale.h>
 
 volatile sig_atomic_t flag = 0;
 int sockfd = 0;
 char name[NAME_LEN];
+
+// Rooms info collection
+room_t* rooms[CLIENT_MAX_ROOMS];
+int rm_count;
+
+// Time stuff
 time_t now;
 struct tm* local;
 
-int connected = 0;
-int connect_once = 0;
-int name_inited = 0;
-int switch_flag = 0;
+WINDOW* chat_window, * chat_pad;
+WINDOW* room_list_window, * room_list_pad, * room_active_pad;
+WINDOW* input_window, * input_pad;
+WINDOW* output_window, * output_pad;
+int screen_cols, screen_rows;
+int mouse_row, mouse_col;
+int chat_pad_height;
+int chat_pad_row, chat_pad_col;
+int chat_mode = 0;
 
-GtkWidget* msg_box;
-GtkWidget* chat_box;
-GtkWidget* room_input;
-GtkWidget* pass_input;
-GtkWidget* help_main;
-GtkWidget* list_main;
+int main() {
+    const char* ip = SERVER_IP;
+    int port = PORT;
 
-GtkTextBuffer* room_buf;
-GtkTextBuffer* pass_buf;
-GtkTextBuffer* msg_buffer;
-GtkTextBuffer* chat_buffer;
-GtkTextBuffer* help_buf;
-GtkTextBuffer* list_buf;
-
-char send_buf[BUFFER_SZ] = {};
-
-struct sockaddr_in serv_addr;
-static pthread_mutex_t mutex;
-static pthread_t conn;
-
-void str_overwrite_stdout() {
-    g_print("\r%s", "> ");
-    fflush(stdout);
-}
-
-void str_trim_lf(char* arr, int length) {
-    for (int i = 0; i < length; i++) {
-        if (arr[i] == '\n') {
-            arr[i] = '\0';
-            break;
-        }
-    }
-}
-
-void catch_ctrl_c_and_exit() {
-    flag = 1;
-}
-
-void recv_msg_handler() {
-    char message[BUFFER_SZ] = {};
-    char msg_content[BUFFER_SZ + 18] = {};
-
-    while (1) {
-        int receive = recv(sockfd, message, BUFFER_SZ, 0);
-
-        if (!strncmp(message, "[SYSTEM] File: ", 15)) {
-            // Print file notification
-            // time(&now);
-            // local = localtime(&now);
-            // sprintf(msg_content, "%02d:%02d ~ %s\n", local->tm_hour, local->tm_min, message);
-            g_printf("Incoming file: %s\n", message + 15);
-
-            //Get iter of chat_box
-            // GtkTextIter start_chat_box;
-            // gtk_text_buffer_get_end_iter(chat_buffer, &start_chat_box);
-
-            // gtk_text_buffer_insert(chat_buffer, &start_chat_box, msg_content, -1);
-
-            // get the file name only
-            // memmove(message, message + 15, strlen(message) - 15);
-            // Initialize
-            int fd = open(message + 15, O_WRONLY | O_CREAT | O_EXCL, 0700);
-            char fileBuf[BUFFER_SZ];
-            memset(fileBuf, 0x0, BUFFER_SZ);
-            int bufLen = 0;
-
-            int pck_cnt = 0;
-            while ((bufLen = read(sockfd, fileBuf, BUFFER_SZ)) > 0) {
-                int write_sz = write(fd, fileBuf, bufLen);
-                g_printf("%d - Current bufLen: %d\n", pck_cnt++, bufLen);
-                memset(fileBuf, 0x0, BUFFER_SZ);
-                if (write_sz < bufLen) {
-                    g_print("File done\n");
-                    break;
-                }
-                if (bufLen == 0 || bufLen != BUFFER_SZ) {
-                    g_print("File done 2\n");
-                    break;
-                }
-            }
-            close(fd);
-
-            // sprintf(msg_content, "%02d:%02d ~ [SYSTEM] File received\n", local->tm_hour, local->tm_min);
-            // g_print(msg_content);
-
-            // gtk_text_buffer_get_end_iter(chat_buffer, &start_chat_box);
-            // gtk_text_buffer_insert(chat_buffer, &start_chat_box, msg_content, -1);
-
-            // continue;
-
-        }
-        else if (!strncmp(message, "List of rooms:", 14)) {
-            gtk_text_buffer_set_text(list_buf, message, -1);
-        }
-        else {
-            if (receive > 0) {
-                time(&now);
-                local = localtime(&now);
-                sprintf(msg_content, "%02d:%02d ~ %s\n", local->tm_hour, local->tm_min, message);
-
-                //Get iter of chat_box
-                GtkTextIter start_chat_box;
-                gtk_text_buffer_get_end_iter(chat_buffer, &start_chat_box);
-
-                gtk_text_buffer_insert(chat_buffer, &start_chat_box, msg_content, -1);
-
-            }
-            else if (receive == 0) {
-                break;
-            }
-            bzero(message, BUFFER_SZ);
-            bzero(msg_content, BUFFER_SZ + 18);
-        }
-    }
-}
-
-void send_msg_handler() {
     time(&now);
     local = localtime(&now);
 
-    char msg_content[BUFFER_SZ + 30] = {};
+    signal(SIGINT, catch_ctrl_c_and_exit);
 
-    //Get iter of msg_box
-    GtkTextIter start_msg_box;
-    GtkTextIter end_msg_box;
-    gtk_text_buffer_get_start_iter(msg_buffer, &start_msg_box);
-    gtk_text_buffer_get_end_iter(msg_buffer, &end_msg_box);
+    printf("Enter your name: ");
+    fgets(name, NAME_LEN, stdin);
+    str_trim_lf(name, strlen(name));
 
-    //Get iter of chat_box
-    GtkTextIter start_chat_box;
-    gtk_text_buffer_get_end_iter(chat_buffer, &start_chat_box);
-
-    strcpy(send_buf, gtk_text_buffer_get_text(msg_buffer, &start_msg_box, &end_msg_box, FALSE));
-    str_trim_lf(send_buf, strlen(send_buf));
-
-    //Get content for chat_box
-    sprintf(msg_content, "%02d:%02d ~ [You] %s\n", local->tm_hour, local->tm_min, send_buf);
-
-    //Insert into chat box
-    gtk_text_buffer_insert(chat_buffer, &start_chat_box, msg_content, -1);
-
-    if (!strcmp(send_buf, ":help") || !strcmp(send_buf, ":h")) {
-        bzero(msg_content, BUFFER_SZ + 8);
-        strcat(msg_content, "Chatter commands:\n");
-        strcat(msg_content, "- :c | :create <password>     - Create a new room with <password>\n");
-        strcat(msg_content, "- :j | :join <id> <password>  - Join a room with <id> & <password>\n");
-        strcat(msg_content, "- :s | :switch <id>           - Switch to room with <id>\n");
-        strcat(msg_content, "- :l | :leave                 - Temporary leave room and return to lobby\n");
-        strcat(msg_content, "- :r | :rename <name>         - Rename self to <name>\n");
-        strcat(msg_content, "- :q | :quit                  - Quit current room and return to lobby\n");
-        strcat(msg_content, "- :f | :file <filename>       - Send file with <filename> to roommate\n");
-        strcat(msg_content, "- :i | :info                  - Print room info\n");
-        strcat(msg_content, "===\n");
-
-        gtk_text_buffer_get_end_iter(chat_buffer, &start_chat_box);
-        gtk_text_buffer_insert(chat_buffer, &start_chat_box, msg_content, -1);
-
+    if (strlen(name) > NAME_LEN || strlen(name) < 2) {
+        printf("ERROR: Enter name correctly\n");
+        return EXIT_FAILURE;
     }
-    else {
-        send(sockfd, send_buf, strlen(send_buf), 0);
+    else if (!strcmp(name, "SYSTEM")) {
+        printf("ERROR: Reserved name. Please use another");
+        return EXIT_FAILURE;
     }
-    bzero(msg_content, BUFFER_SZ + 8);
-    bzero(send_buf, BUFFER_SZ);
 
-    gtk_text_buffer_delete(msg_buffer, &start_msg_box, &end_msg_box);
-}
-
-static void* server_connect() {
-    const char* ip = SERVER_IP;
-    int port = PORT;
+    struct sockaddr_in serv_addr;
 
     // Socket Settings
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -210,302 +74,469 @@ static void* server_connect() {
     // Connect to the server
     int err = connect(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
     if (err == -1) {
-        g_print("ERROR: connect\n");
+        printf("ERROR: connect\n");
         return EXIT_FAILURE;
     }
 
+    setlocale(LC_ALL, "en_US.UTF-8");
+
+    // Initialize ncurses
+    initscr();
+
+    // Enable color
+    start_color();
+    // Set to use default colors, which will be used below
+    use_default_colors();
+
+    // Init color pairs with default BG color (terminal's BG color)
+    init_pair(BLUE_TEXT, COLOR_BLUE, -1);
+    init_pair(YELLOW_TEXT, COLOR_YELLOW, -1);
+    init_pair(RED_TEXT, COLOR_RED, -1);
+    init_pair(GREEN_TEXT, COLOR_GREEN, -1);
+    init_pair(CYAN_TEXT, COLOR_CYAN, -1);
+
+    // Get max size of terminal
+    getmaxyx(stdscr, screen_rows, screen_cols);
+
+    // Initialize windows
+    chat_window = newwin(screen_rows - 13, screen_cols - 40, 2, 35);
+    chat_pad = newpad(PAD_LENGTH, screen_cols - 42);
+
+    input_window = newwin(7, screen_cols - 40, screen_rows - 11, 35);
+    input_pad = derwin(input_window, 4, screen_cols - 42, 2, 1);
+
+    room_list_window = newwin(screen_rows - 3, 30, 2, 5);
+    room_list_pad = derwin(room_list_window, screen_rows - 6, 27, 2, 2);
+    room_active_pad = derwin(room_list_window, screen_rows - 6, 1, 2, 1);
+
+    output_window = newwin(3, screen_cols - 40, screen_rows - 4, 35);
+    output_pad = derwin(output_window, 1, screen_cols - 43, 1, 2);
+
+    chat_pad_row = 0;
+    chat_pad_col = 0;
+    chat_pad_height = 0;
+
+    // Draw window borders
+    box(chat_window, 0, 0);
+    box(input_window, 0, 0);
+    box(output_window, 0, 0);
+    box(room_list_window, 0, 0);
+
+    // Allow scrolling for chatbox
+    scrollok(chat_pad, TRUE);
+
+    // Enable keypad for input
+    keypad(input_pad, TRUE);
+
+    refresh();
+    wrefresh(chat_window);
+    wrefresh(input_window);
+    wrefresh(room_list_window);
+
+    // Send name to server
     send(sockfd, name, NAME_LEN, 0);
-}
 
-void on_open_file_activate(GtkMenuItem* menuitem, GtkWidget* w_dlg_file_choose) {
-    // Show the "Open Text File" dialog box
-    gtk_widget_show(w_dlg_file_choose);
-}
+    // Welcome text
+    print_msg("=== WELCOME TO CHATTER ===", 1);
+    print_msg("Type :h for Chatter commands", 1);
 
-void on_open_btn_clicked(GtkButton* button, GtkWidget* w_dlg_file_choose) {
-    char path[1000] = {};
+    // Initial List room
+    mvwaddstr(chat_window, 0, 2, " CHATBOX ");
+    mvwaddstr(room_list_window, 0, 2, " ROOMS ");
+    mvwaddstr(input_window, 0, 2, " MESSAGE ");
 
-    // Get the file name from the dialog box
-    if (connected) {
-        strcpy(path, gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(w_dlg_file_choose)));
-        if (strcmp(path, "")) {
-            sprintf(send_buf, ":f %s", path);
-            send(sockfd, send_buf, strlen(send_buf), 0);
-            bzero(send_buf, BUFFER_SZ);
+    wrefresh(room_list_window);
+    wrefresh(chat_window);
+    wrefresh(input_window);
+    wrefresh(output_window);
 
-            g_print("File request sent!\n");
-        }
-    }
-
-    // Finished with the "Open Text File" dialog box, so hide it
-    gtk_widget_hide(w_dlg_file_choose);
-}
-
-void on_cancel_bt_clicked(GtkButton* button, GtkWidget* w_dlg_file_choose) {
-    gtk_widget_hide(w_dlg_file_choose);
-}
-
-void on_confirm_btn_clicked(GtkButton* button, GtkWidget* join_dlg) {
-    char room[10] = {};
-    char pass[PASSWORD_LEN] = {};
-
-    //Get room's iter
-    GtkTextIter start_room;
-    GtkTextIter end_room;
-    gtk_text_buffer_get_start_iter(room_buf, &start_room);
-    gtk_text_buffer_get_end_iter(room_buf, &end_room);
-
-    //Get pass's iter
-    GtkTextIter start_pass;
-    GtkTextIter end_pass;
-    gtk_text_buffer_get_start_iter(pass_buf, &start_pass);
-    gtk_text_buffer_get_end_iter(pass_buf, &end_pass);
-
-    //Get room's input
-    strcpy(room, gtk_text_buffer_get_text(room_buf, &start_room, &end_room, FALSE));
-
-    //Get pass's input
-    strcpy(pass, gtk_text_buffer_get_text(pass_buf, &start_pass, &end_pass, FALSE));
-
-    sprintf(send_buf, ":j %s %s", room, pass);
-    send(sockfd, send_buf, strlen(send_buf), 0);
-    bzero(send_buf, BUFFER_SZ);
-
-    //Clear buffer
-    gtk_text_buffer_delete(room_buf, &start_room, &end_room);
-    gtk_text_buffer_delete(pass_buf, &start_pass, &end_pass);
-
-    //Close the widget
-    gtk_widget_hide(join_dlg);
-}
-
-void on_confirm_create_btn_clicked(GtkButton* button, GtkWidget* create_dlg) {
-    char room[10] = {};
-    char pass[PASSWORD_LEN] = {};
-
-    //Get room's iter
-    GtkTextIter start_room;
-    GtkTextIter end_room;
-    gtk_text_buffer_get_start_iter(room_buf, &start_room);
-    gtk_text_buffer_get_end_iter(room_buf, &end_room);
-
-    //Get pass's iter
-    GtkTextIter start_pass;
-    GtkTextIter end_pass;
-    gtk_text_buffer_get_start_iter(pass_buf, &start_pass);
-    gtk_text_buffer_get_end_iter(pass_buf, &end_pass);
-
-    //Get room's input
-    strcpy(room, gtk_text_buffer_get_text(room_buf, &start_room, &end_room, FALSE));
-
-    //Get pass's input
-    strcpy(pass, gtk_text_buffer_get_text(pass_buf, &start_pass, &end_pass, FALSE));
-
-    sprintf(send_buf, ":c %s %s", room, pass);
-    send(sockfd, send_buf, strlen(send_buf), 0);
-    bzero(send_buf, BUFFER_SZ);
-
-    //Clear buffer
-    gtk_text_buffer_delete(room_buf, &start_room, &end_room);
-    gtk_text_buffer_delete(pass_buf, &start_pass, &end_pass);
-
-    //Close the widget
-    gtk_widget_hide(create_dlg);
-}
-
-void on_confirm_switch_btn_clicked(GtkButton* button, GtkWidget* switch_dlg) {
-    char room[10] = {};
-
-    //Get room's iter
-    GtkTextIter start_room;
-    GtkTextIter end_room;
-    gtk_text_buffer_get_start_iter(room_buf, &start_room);
-    gtk_text_buffer_get_end_iter(room_buf, &end_room);
-
-    //Get room's input
-    strcpy(room, gtk_text_buffer_get_text(room_buf, &start_room, &end_room, FALSE));
-
-    sprintf(send_buf, ":s %s", room);
-    send(sockfd, send_buf, strlen(send_buf), 0);
-    bzero(send_buf, BUFFER_SZ);
-
-    //Clear buffer
-    gtk_text_buffer_delete(room_buf, &start_room, &end_room);
-
-    //Close the widget
-    gtk_widget_hide(switch_dlg);
-}
-
-void on_leave_btn_activate() {
-    sprintf(send_buf, ":q");
-    send(sockfd, send_buf, strlen(send_buf), 0);
-    bzero(send_buf, BUFFER_SZ);
-}
-
-void on_list_activate(GtkMenuItem* list_itm, GtkWidget* list_main) {
-    gtk_widget_show(list_main);
-
-    sprintf(send_buf, ":li");
-    send(sockfd, send_buf, strlen(send_buf), 0);
-    bzero(send_buf, BUFFER_SZ);
-}
-
-void on_command_activate(GtkMenuItem* help_itm, GtkWidget* help_window) {
-    gtk_widget_show(help_window);
-
-    char msg_content[BUFFER_SZ + 8] = {};
-
-    //Print help info
-    bzero(msg_content, BUFFER_SZ + 8);
-    strcat(msg_content, "Chatter commands:\n");
-    strcat(msg_content, "- :c | :create <password>     - Create a new room with <password>\n");
-    strcat(msg_content, "- :j | :join <id> <password>  - Join a room with <id> & <password>\n");
-    strcat(msg_content, "- :s | :switch <id>           - Switch to room with <id>\n");
-    strcat(msg_content, "- :l | :leave                 - Temporary leave room and return to lobby\n");
-    strcat(msg_content, "- :r | :rename <name>         - Rename self to <name>\n");
-    strcat(msg_content, "- :q | :quit                  - Quit current room and return to lobby\n");
-    strcat(msg_content, "- :f | :file <filename>       - Send file with <filename> to roommate\n");
-    strcat(msg_content, "- :i | :info                  - Print room info\n");
-    strcat(msg_content, "===\n");
-
-    gtk_text_buffer_set_text(help_buf, msg_content, -1);
-}
-
-void on_change_name_btn_clicked(GtkButton* button, GtkTextBuffer* buffer) {
-
-    //Get iter
-    GtkTextIter start;
-    GtkTextIter end;
-    gtk_text_buffer_get_start_iter(buffer, &start);
-    gtk_text_buffer_get_end_iter(buffer, &end);
-
-    //Get name
-    strcpy(name, gtk_text_buffer_get_text(buffer, &start, &end, FALSE));
-    g_print("Name changed: %s\n", name);
-
-    if (name_inited) {
-        sprintf(send_buf, ":r %s", name);
-        send(sockfd, send_buf, strlen(send_buf), 0);
-        bzero(send_buf, BUFFER_SZ);
-    }
-    else name_inited = 1;
-
-}
-
-void on_connect_btn_clicked(GtkButton* button, GtkTextBuffer* buffer) {
-    if (!connect_once) {
-        pthread_create(&conn, NULL, server_connect, NULL);
-
-        gtk_text_buffer_set_text(buffer, "=== WELCOME TO CHATTER ===\n", -1);
-        //Get iter
-        GtkTextIter start;
-        gtk_text_buffer_get_end_iter(buffer, &start);
-
-        //Get current time
-        char time[50];
-        sprintf(time, "Current time: %s", ctime(&now));
-
-        gtk_text_buffer_insert(buffer, &start, time, -1);
-
-        //Get iter
-        gtk_text_buffer_get_end_iter(buffer, &start);
-        gtk_text_buffer_insert(buffer, &start, "Type :h or :help for Chatter commands\n", -1);
-
-        connect_once = 1;
-        connected = 1;
-    }
-}
-
-
-void on_msg_send_btn_clicked(GtkButton* button, GtkTextBuffer* buffer) {
-
-    //Thread for sending the messages
+    // Thread for sending messages
     pthread_t send_msg_thread;
     if (pthread_create(&send_msg_thread, NULL, (void*)send_msg_handler, NULL) != 0) {
-        g_print("ERROR: pthread\n");
+        printf("ERROR: pthread\n");
         return EXIT_FAILURE;
     }
-}
-
-void on_switch_btn_activate(GtkMenuItem* switch_itm, GtkWidget* switch_dlg) {
-    gtk_widget_show(switch_dlg);
-}
-
-void on_cancel_switch_btn_clicked(GtkButton* cancel, GtkWidget* switch_dlg) {
-    gtk_widget_hide(switch_dlg);
-}
-
-void on_join_btn_activate(GtkMenuItem* join, GtkWidget* join_dlg) {
-    gtk_widget_show(join_dlg);
-}
-
-void on_cancel_btn_clicked(GtkButton* cancel, GtkWidget* join_dlg) {
-    gtk_widget_hide(join_dlg);
-}
-
-void on_create_btn_activate(GtkMenuItem* create, GtkWidget* create_dlg) {
-    gtk_widget_show(create_dlg);
-}
-
-void on_cancel_create_btn_clicked(GtkButton* cancel, GtkWidget* create_dlg) {
-    gtk_widget_hide(create_dlg);
-}
-
-void on_client_main_destroy() {
-    close(sockfd);
-    gtk_main_quit();
-}
-
-// int main(int argc, char const* argv[]) {
-int main(int argc, char* argv[]) {
-
-    time(&now);
-    local = localtime(&now);
-
-    strcpy(name, "unnamed");
-
-    GtkBuilder* builder;
-    GtkWidget* window;
-
-    gtk_init(&argc, &argv);
-
-    builder = gtk_builder_new();
-    gtk_builder_add_from_file(builder, "../glade/client.glade", NULL);
-
-    window = GTK_WIDGET(gtk_builder_get_object(builder, "client_main"));
-    gtk_builder_connect_signals(builder, NULL);
-
-    msg_box = GTK_WIDGET(gtk_builder_get_object(builder, "msg_view"));
-    chat_box = GTK_WIDGET(gtk_builder_get_object(builder, "chat_view"));
-    room_input = GTK_WIDGET(gtk_builder_get_object(builder, "room_input"));
-    pass_input = GTK_WIDGET(gtk_builder_get_object(builder, "pass_input"));
-    help_main = GTK_WIDGET(gtk_builder_get_object(builder, "help_view"));
-    list_main = GTK_WIDGET(gtk_builder_get_object(builder, "list_view"));
-
-    msg_buffer = gtk_text_view_get_buffer(msg_box);
-    chat_buffer = gtk_text_view_get_buffer(chat_box);
-    room_buf = gtk_text_view_get_buffer(room_input);
-    pass_buf = gtk_text_view_get_buffer(pass_input);
-    help_buf = gtk_text_view_get_buffer(help_main);
-    list_buf = gtk_text_view_get_buffer(list_main);
-
-    g_object_unref(builder);
-
-    gtk_widget_show_all(window);
-
-    pthread_mutex_init(&mutex, NULL);
 
     // Thread for receiving messages
     pthread_t recv_msg_thread;
     if (pthread_create(&recv_msg_thread, NULL, (void*)recv_msg_handler, NULL) != 0) {
-        g_print("ERROR: pthread\n");
+        printf("ERROR: pthread\n");
         return EXIT_FAILURE;
     }
 
-    gtk_main();
 
+    while (1) {
+        if (flag) {
+            printf("\nGoodbye\n");
+            break;
+        }
+    }
+
+    // Clean up
     close(sockfd);
+    endwin();
 
     return EXIT_SUCCESS;
 }
 
+void send_msg_handler() {
+    char buffer[BUFFER_SZ] = "";
+    int submitted = 0;
+    int buflen = 0;
+    int ch;
+
+    while (1) {
+        str_overwrite_stdout();
+
+        // Reset
+        strcpy(buffer, "");
+        buflen = 0;
+        submitted = 0;
+
+        // Handle Input
+        noecho();
+        do {
+            ch = wgetch(input_pad);
+            wrefresh(input_pad);
+            switch (ch) {
+            case KEY_UP: // Up = Scroll chat up
+                getyx(input_pad, mouse_col, mouse_row);
+                if (chat_pad_row > 0)
+                    chat_pad_row--;
+                prefresh(chat_pad, chat_pad_row, chat_pad_col, 4, 36, PAD_VIEW_ROWS, PAD_VIEW_COLS);
+                wmove(input_pad, mouse_row, mouse_col);
+                break;
+            case KEY_DOWN: // Down = Scroll chat down
+                getyx(input_pad, mouse_col, mouse_row);
+                if (chat_pad_row < chat_pad_height - screen_rows + 16 && chat_pad_row < PAD_LENGTH)
+                    chat_pad_row++;
+                prefresh(chat_pad, chat_pad_row, chat_pad_col, 4, 36, PAD_VIEW_ROWS, PAD_VIEW_COLS);
+                wmove(input_pad, mouse_row, mouse_col);
+                break;
+            case 127: // Delete
+            case 8: // Backspace
+            case KEY_RIGHT:
+            case KEY_LEFT:
+                // Emulate backspace
+                if (buflen) {
+                    // update msg content
+                    buffer[--buflen] = 0;
+                    // update input box
+                    mvwaddch(input_pad, 0, buflen + 2, 32);
+                    wrefresh(input_pad);
+                    wmove(input_pad, 0, buflen + 2);
+                }
+                break;
+            case 10: // Enter
+                submitted = 1;
+                break;
+            default: // Emulate typing
+                // update msg content
+                buffer[buflen++] = ch;
+                // update input box
+                mvwaddch(input_pad, 0, buflen + 1, ch);
+                wrefresh(input_pad);
+                break;
+            }
+            if (submitted)
+                break;
+        } while (ch != KEY_ENTER);
+        echo();
+
+        buffer[buflen] = 0;
+        // Clear input
+        wclear(input_pad);
+        wrefresh(input_pad);
+
+        // --- Preprocess before sending to server ---
+        // :h - Print help
+        if (!strcmp(buffer, ":h")) {
+            print_help();
+        }
+        // :s - Switch room
+        // Room IDs are mapped to indexes for easier switching
+        else if (!strncmp(buffer, ":s", 2)) {
+            strtok(buffer, " \n");
+            char* param = strtok(NULL, " \n");
+            if (param != NULL) {
+                int idx = atoi(param);
+                if (idx <= 0) {
+                    print_sys("Positive index only!");
+                }
+                else {
+                    if (rooms[idx - 1]) {
+                        // Mark active room in room list window
+                        wclear(room_active_pad);
+                        wattron(room_active_pad, COLOR_PAIR(4));
+                        mvwaddch(room_active_pad, (idx - 1) * 2, 0, '*');
+                        wattroff(room_active_pad, COLOR_PAIR(4));
+                        wrefresh(room_active_pad);
+
+                        // Generate command
+                        sprintf(buffer, ":s %s", rooms[idx - 1]->room_id);
+                        // Send command to server
+                        send(sockfd, buffer, strlen(buffer), 0);
+                    }
+                    else {
+                        print_sys("Room doesn't exist!");
+                    }
+                }
+            }
+            else {
+                print_sys("Please provide index!");
+            }
+        }
+        // :q - Quit room
+        else if (!strncmp(buffer, ":q", 2)) {
+            // Clear active mark
+            wclear(room_active_pad);
+            wrefresh(room_active_pad);
+            // Clear chatbox
+            wclear(chat_pad);
+            prefresh(chat_pad, chat_pad_row, chat_pad_col, 4, 36, PAD_VIEW_ROWS, PAD_VIEW_COLS);
+            // Actually send :q
+            sprintf(buffer, ":q");
+            send(sockfd, buffer, strlen(buffer), 0);
+        }
+        else {
+            // Clear output window
+            wclear(output_pad);
+            wrefresh(output_pad);
+            // Send command to server
+            send(sockfd, buffer, strlen(buffer), 0);
+        }
+    }
+    catch_ctrl_c_and_exit();
+}
+
+void recv_msg_handler() {
+    char buffer[BUFFER_SZ] = {};
+    char message[BUFFER_SZ + 18] = {};
+    char* cmd;
+    char* param;
+
+    while (1) {
+        int receive = recv(sockfd, buffer, BUFFER_SZ, 0);
+
+        if (receive > 0) {
+            // Get current mouse position
+            getyx(input_pad, mouse_col, mouse_row);
+            buffer[strlen(buffer)] = 0;
+            // Get message header
+            cmd = strtok(buffer, " \n");
+
+            // [FILE] - Incoming file
+            if (!strcmp(cmd, "[FILE]")) {
+                param = strtok(NULL, "");
+
+                // Print file notification
+                time(&now);
+                local = localtime(&now);
+                sprintf(message, "%02d:%02d ~ [FILE] %s", local->tm_hour, local->tm_min, param);
+                print_msg(message, 3);
+
+                // Initialize
+                int fd = open(param, O_WRONLY | O_CREAT | O_EXCL, 0700);
+                char fileBuf[BUFFER_SZ];
+                memset(fileBuf, 0x0, BUFFER_SZ);
+                int bufLen = 0;
+
+                // Receive file
+                while ((bufLen = read(sockfd, fileBuf, BUFFER_SZ)) > 0) {
+                    int write_sz = write(fd, fileBuf, bufLen);
+                    memset(fileBuf, 0x0, BUFFER_SZ);
+                    if (write_sz < bufLen) {
+                        break;
+                    }
+                    if (bufLen == 0 || bufLen != BUFFER_SZ) {
+                        break;
+                    }
+                }
+                close(fd);
+            }
+            // [INFO] - Incoming info data
+            else if (!strcmp(cmd, "[INFO]")) {
+                param = strtok(NULL, "");
+                print_info(param);
+            }
+            // [ROOMS] - Incoming room list
+            else if (!strcmp(cmd, "[ROOMS]")) {
+                param = strtok(NULL, "");
+                update_room_list(param);
+            }
+            // [MESSAGES] - Incoming chatroom's previous messages
+            else if (!strcmp(cmd, "[MESSAGES]")) {
+                param = strtok(NULL, "");
+                print_chat(param);
+            }
+            // [SYSTEM] - Incoming system message
+            else if (!strcmp(cmd, "[SYSTEM]")) {
+                cmd[strlen(cmd)] = ' ';
+                print_sys(buffer + 9);
+            }
+            // A normal chat message
+            else {
+                cmd[strlen(cmd)] = ' ';
+                time(&now);
+                local = localtime(&now);
+                sprintf(message, "%02d:%02d ~ %s", local->tm_hour, local->tm_min, buffer);
+                print_msg(message, 0);
+            }
+            wmove(input_pad, mouse_col, mouse_row);
+            str_overwrite_stdout();
+        }
+        else {
+            break;
+        }
+
+        bzero(buffer, BUFFER_SZ);
+        bzero(message, BUFFER_SZ + 18);
+    }
+}
+
+// Print a message
+void print_msg(char* str, int color) {
+    // Watch for content height
+    chat_pad_height = chat_pad_height + 1 + strlen(str) / (PAD_VIEW_COLS);
+
+    // Print message
+    if (str != NULL) {
+        if (color)
+            wattron(chat_pad, COLOR_PAIR(color));
+        wprintw(chat_pad, "%s\n", str);
+        if (color)
+            wattroff(chat_pad, COLOR_PAIR(color));
+        // Scroll down to fit if needed
+        auto_scroll(chat_pad_height);
+    }
+
+    prefresh(chat_pad, chat_pad_row, chat_pad_col, 4, 36, PAD_VIEW_ROWS, PAD_VIEW_COLS);
+}
+
+// Print help content
+void print_help() {
+    print_msg("[HELP]", 5);
+    print_msg("Chatter commands:", 5);
+    print_msg("- :c <pass> <name> - CREATE a new room, <pass> must not have space", 5);
+    print_msg("- :j <id> <pass>   - JOIN a room", 5);
+    print_msg("- :s <num>         - SWITCH to room with index displayed in [ROOMS]", 5);
+    print_msg("- :r <name>        - RENAME self", 5);
+    print_msg("- :q               - QUIT current room", 5);
+    print_msg("- :f <path>        - Send FILE to roommate", 5);
+    print_msg("- :i               - Print room INFO", 5);
+    print_msg("---", 5);
+    print_msg("Chatter keybinding:", 5);
+    print_msg("- Ctrl+C           - Quit Chatter", 5);
+    print_msg("- Up               - Scroll chatbox up", 5);
+    print_msg("- Down             - Scroll chatbox down", 5);
+}
+
+// Print room info
+void print_info(char* info) {
+    char** tokens = str_split(info, '\n');
+    for (int i = 0; *(tokens + i); i++) {
+        print_msg(tokens[i], 2);
+        free(*(tokens + i));
+    }
+    free(tokens);
+}
+
+// Print chatroom's previous messages
+void print_chat(char* content) {
+    // Clear chatbox
+    wclear(chat_pad);
+    chat_pad_row = 0;
+    chat_pad_height = 0;
+
+    if (content) {
+        char** tokens = str_split(content, '\n');
+        if (tokens) {
+            for (int i = 0; *(tokens + i); i++) {
+                print_msg(tokens[i], 0);
+                free(*(tokens + i));
+            }
+        }
+        free(tokens);
+    }
+
+    // Update
+    prefresh(chat_pad, chat_pad_row, chat_pad_col, 4, 36, PAD_VIEW_ROWS, PAD_VIEW_COLS);
+}
+
+// Print system message
+void print_sys(char* msg) {
+    wclear(output_pad);
+    wattron(output_pad, COLOR_PAIR(3));
+    waddstr(output_pad, msg);
+    wattroff(output_pad, COLOR_PAIR(3));
+    wrefresh(output_pad);
+}
+
+// Update ROOMS window content
+void update_room_list(char* list) {
+    // Clear old list
+    wclear(room_list_pad);
+
+    if (list != NULL) {
+        // Prepare list
+        char** tokens = str_split(list, '\n');
+        int i = 0; // Token index
+        int idx = 0; // Collection index
+
+        // Update
+        wattron(room_list_pad, COLOR_PAIR(1));
+        while (*(tokens + i)) {
+            room_t* gr = (room_t*)malloc(sizeof(room_t));
+
+            // Print
+            mvwprintw(room_list_pad, idx * 2, 0, "%d. %s\n", idx + 1, *(tokens + i));
+            strcpy(gr->room_name, *(tokens + i));
+            free(*(tokens + i));
+            i++;
+            strcpy(gr->room_id, *(tokens + i));
+            free(*(tokens + i));
+            i++;
+
+            // Add to collection
+            if (rooms[idx]) {
+                free(rooms[idx]);
+            }
+            rooms[idx] = gr;
+            idx++;
+        }
+        wattroff(room_list_pad, COLOR_PAIR(1));
+
+        // Cleanup
+        free(tokens);
+    }
+    wrefresh(room_list_pad);
+}
+
+// Print prompt
+void str_overwrite_stdout() {
+    wattron(input_pad, COLOR_PAIR(4));
+    wprintw(input_pad, "\r%s", "> ");
+    wattroff(input_pad, COLOR_PAIR(4));
+    wrefresh(input_pad);
+    fflush(stdout);
+}
+
+void catch_ctrl_c_and_exit() {
+    flag = 1;
+}
+
+// Auto scroll down if necessary when a new message comes
+void auto_scroll(int chat_pad_height) {
+    if (chat_pad_height > screen_rows - 16 + chat_pad_row) {
+        chat_pad_row = chat_pad_height - screen_rows + 16;
+    }
+}
+
+// Reset chat pad param
+void reset_chat_pad() {
+    chat_pad_row = 0;
+    chat_pad_col = 0;
+    chat_pad_height = 0;
+    wclear(chat_pad);
+    prefresh(chat_pad, chat_pad_row, chat_pad_col, 4, 36, PAD_VIEW_ROWS, PAD_VIEW_COLS);
+}
