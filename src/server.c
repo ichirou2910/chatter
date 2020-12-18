@@ -689,7 +689,7 @@ int leave_room(char* room_id, client_t* cl) {
 
 void* handle_client(void* arg) {
     char buffer[BUFFER_SZ];
-    char name[NAME_LEN];
+    char* name = (char*)malloc(NAME_LEN + 1);
     int leave_flag = 0;
     char* cmd;
     char* param;
@@ -705,6 +705,7 @@ void* handle_client(void* arg) {
     else {
         strcpy(cli->name, name);
         strcpy(cli->active_room, "");
+        free(name);
         cli->rm_count = 0;
         printf("[SYSTEM] User %s (uid: %d) joined the server\n", cli->name, cli->uid);
     }
@@ -790,7 +791,7 @@ void* handle_client(void* arg) {
                     else if (res == 1) {
                         // sprintf(buffer, "[SYSTEM] Joined room: %s", gid);
                         // send_user(buffer, cli->uid);
-                        sprintf(buffer, "[SYSTEM] %s joined in the chat", name);
+                        sprintf(buffer, "[SYSTEM] %s joined in the chat", cli->name);
                         send_other(buffer, cli->uid, gid);
                         send_list_room(cli->uid);
                         // send_list_msg(gid, cli->uid);
@@ -837,7 +838,7 @@ void* handle_client(void* arg) {
                     param = strtok(NULL, " \n");
                     if (param != NULL) {
                         char* name = (char*)malloc(NAME_LEN + 1);
-                        strcpy(name, param);
+                        strcpy(cli->name, param);
                         name[NAME_LEN] = 0; // Truncate
                         // printf("Rename request to %s\n", param);
                         sprintf(buffer, "[SYSTEM] Renamed %s to %s", cli->name, name);
