@@ -1,7 +1,7 @@
 #include "utils.h"
 
 char* rand_string(size_t size) {
-    char* str = (char*)malloc(size + 1);
+    char* str = (char*)malloc(size * sizeof(char) + 1);
     const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     if (str && size) {
         --size;
