@@ -36,9 +36,11 @@ void catch_ctrl_c_and_exit();
 void recv_msg_handler();
 void send_msg_handler();
 void auto_scroll(int chat_pad_height);
+void reset_chat_pad();
 
 // === PRINT STUFF
 void print_msg(char* str, int color); // Print a message
+void print_help();
 void print_info(char* info); // Print Room info
 void print_chat(char* content); // Print Chat messages
 void print_sys(char* msg); //Print system message

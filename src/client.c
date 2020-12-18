@@ -110,7 +110,7 @@ int main() {
 
     chat_pad_row = 0;
     chat_pad_col = 0;
-    chat_pad_height = 4;
+    chat_pad_height = 0;
 
     // Draw window borders
     box(chat_window, 0, 0);
@@ -131,13 +131,12 @@ int main() {
     send(sockfd, name, NAME_LEN, 0);
 
     // Welcome text
-    wattron(chat_pad, COLOR_PAIR(1));
-    waddstr(chat_pad, "=== WELCOME TO CHATTER ===\n");
-    wprintw(chat_pad, "Current time: %s", ctime(&now));
-    waddstr(chat_pad, "Type :h or :help for Chatter commands\n");
-    wattroff(chat_pad, COLOR_PAIR(1));
+    // wattron(chat_pad, COLOR_PAIR(1));
+    print_msg("=== WELCOME TO CHATTER ===", 1);
+    print_msg("Type :h for Chatter commands", 1);
+    // wattroff(chat_pad, COLOR_PAIR(1));
 
-    prefresh(chat_pad, chat_pad_row, chat_pad_col, 4, 36, PAD_VIEW_ROWS, PAD_VIEW_COLS);
+    // prefresh(chat_pad, chat_pad_row, chat_pad_col, 4, 36, PAD_VIEW_ROWS, PAD_VIEW_COLS);
 
     // Initial List room
     // TODO: Fix position
@@ -223,6 +222,23 @@ void print_msg(char* str, int color) {
     prefresh(chat_pad, chat_pad_row, chat_pad_col, 4, 36, PAD_VIEW_ROWS, PAD_VIEW_COLS);
 }
 
+void print_help() {
+    print_msg("[HELP]", 5);
+    print_msg("Chatter commands:", 5);
+    print_msg("- :c <pass> <name> - CREATE a new room", 5);
+    print_msg("- :j <id> <pass>   - JOIN a room", 5);
+    print_msg("- :s <id>          - SWITCH to room", 5);
+    print_msg("- :r <name>        - RENAME self", 5);
+    print_msg("- :q               - QUIT current room", 5);
+    print_msg("- :f <path>        - Send FILE to roommate", 5);
+    print_msg("- :i               - Print room INFO", 5);
+    print_msg("---", 5);
+    print_msg("Chatter keybinding:", 5);
+    print_msg("- Ctrl+C           - Quit Chatter", 5);
+    print_msg("- Up               - Scroll chatbox up", 5);
+    print_msg("- Down             - Scroll chatbox down", 5);
+}
+
 void print_info(char* info) {
     char** tokens = str_split(info, '\n');
     for (int i = 0; *(tokens + i); i++) {
@@ -235,6 +251,8 @@ void print_info(char* info) {
 void print_chat(char* content) {
     // Clear chatbox
     wclear(chat_pad);
+    chat_pad_row = 0;
+    chat_pad_height = 0;
 
     if (content) {
         char** tokens = str_split(content, '\n');
@@ -292,9 +310,18 @@ void update_room_list(char* list) {
 
 // Auto scroll down if necessary when a new message comes
 void auto_scroll(int chat_pad_height) {
-    if (chat_pad_height > screen_rows - 12 + chat_pad_row) {
-        chat_pad_row = chat_pad_height - screen_rows + 12;
+    if (chat_pad_height > screen_rows - 16 + chat_pad_row) {
+        chat_pad_row = chat_pad_height - screen_rows + 16;
     }
+}
+
+// Reset chat pad param
+void reset_chat_pad() {
+    chat_pad_row = 0;
+    chat_pad_col = 0;
+    chat_pad_height = 0;
+    wclear(chat_pad);
+    prefresh(chat_pad, chat_pad_row, chat_pad_col, 4, 36, PAD_VIEW_ROWS, PAD_VIEW_COLS);
 }
 
 void recv_msg_handler() {
@@ -317,7 +344,7 @@ void recv_msg_handler() {
                 // Print file notification
                 time(&now);
                 local = localtime(&now);
-                sprintf(message, "%02d:%02d ~ [FILE] %s\n", local->tm_hour, local->tm_min, param);
+                sprintf(message, "%02d:%02d ~ [FILE] %s", local->tm_hour, local->tm_min, param);
                 print_msg(message, 3);
 
                 // Initialize
@@ -415,7 +442,7 @@ void send_msg_handler() {
                 break;
             case KEY_DOWN:
                 getyx(input_pad, mouse_col, mouse_row);
-                if (chat_pad_row < chat_pad_height - screen_rows + 12 && chat_pad_row < PAD_LENGTH)
+                if (chat_pad_row < chat_pad_height - screen_rows + 16 && chat_pad_row < PAD_LENGTH)
                     chat_pad_row++;
                 prefresh(chat_pad, chat_pad_row, chat_pad_col, 4, 36, PAD_VIEW_ROWS, PAD_VIEW_COLS);
                 wmove(input_pad, mouse_row, mouse_col);
@@ -451,18 +478,7 @@ void send_msg_handler() {
         wrefresh(input_pad);
 
         if (!strcmp(buffer, ":h")) {
-            int color = 5;
-            print_msg("===", color);
-            print_msg("Chatter commands:", color);
-            print_msg("- :c <pass> <name> - CREATE a new room", color);
-            print_msg("- :j <id> <pass>   - JOIN a room", color);
-            print_msg("- :s <id>          - SWITCH to room", color);
-            print_msg("- :r <name>        - RENAME self", color);
-            print_msg("- :q               - QUIT current room", color);
-            print_msg("- :f <path>        - Send FILE to roommate", color);
-            print_msg("- :i               - Print room INFO", color);
-            print_msg("===", color);
-            print_msg("Press Ctrl+C to quit Chatter", color);
+            print_help();
         }
         else if (!strncmp(buffer, ":s", 2)) {
             strtok(buffer, " \n");
@@ -507,7 +523,7 @@ void send_msg_handler() {
         else {
             send(sockfd, buffer, strlen(buffer), 0);
         }
-        bzero(buffer, BUFFER_SZ);
+        // bzero(buffer, BUFFER_SZ);
     }
     catch_ctrl_c_and_exit();
 }
