@@ -388,41 +388,67 @@ void recv_msg_handler() {
 }
 
 void send_msg_handler() {
-    char buffer[BUFFER_SZ] = {};
+    char buffer[BUFFER_SZ] = "";
+    int submitted = 0;
+    int buflen = 0;
 
     while (1) {
         str_overwrite_stdout();
 
+        // Reset
+        strcpy(buffer, "");
+        buflen = 0;
+        submitted = 0;
+
         // Handle Input
+        noecho();
         do {
-            noecho();
             ch = wgetch(input_pad);
             wrefresh(input_pad);
             switch (ch) {
             case KEY_UP:
+                getyx(input_pad, mouse_col, mouse_row);
                 if (chat_pad_row > 0)
                     chat_pad_row--;
                 prefresh(chat_pad, chat_pad_row, chat_pad_col, 4, 36, PAD_VIEW_ROWS, PAD_VIEW_COLS);
+                wmove(input_pad, mouse_row, mouse_col);
                 break;
             case KEY_DOWN:
+                getyx(input_pad, mouse_col, mouse_row);
                 if (chat_pad_row < chat_pad_height - screen_rows + 12 && chat_pad_row < PAD_LENGTH)
                     chat_pad_row++;
                 prefresh(chat_pad, chat_pad_row, chat_pad_col, 4, 36, PAD_VIEW_ROWS, PAD_VIEW_COLS);
+                wmove(input_pad, mouse_row, mouse_col);
                 break;
-            case 'i':
-                echo();
-                wgetnstr(input_pad, buffer, BUFFER_SZ);
+            case 127: // Backspace
+                if (buflen) {
+                    // update msg content
+                    buffer[--buflen] = 0;
+                    // update input box
+                    mvwaddch(input_pad, 0, buflen + 2, 32);
+                    wrefresh(input_pad);
+                    wmove(input_pad, 0, buflen + 2);
+                }
+                break;
+            case 10: // Enter
+                submitted = 1;
                 break;
             default:
+                // update msg content
+                buffer[buflen++] = ch;
+                // update input box
+                mvwaddch(input_pad, 0, buflen + 1, ch);
+                wrefresh(input_pad);
                 break;
             }
-        } while (ch != 'i');
+            if (submitted)
+                break;
+        } while (ch != KEY_ENTER);
+        echo();
 
-        // wgetnstr(input_pad, buffer, BUFFER_SZ);
+        buffer[buflen] = 0;
         wclear(input_pad);
         wrefresh(input_pad);
-
-        str_trim_lf(buffer, BUFFER_SZ);
 
         if (!strcmp(buffer, ":help") || !strcmp(buffer, ":h")) {
             int color = 5;
