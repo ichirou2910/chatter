@@ -1,5 +1,6 @@
 #include "utils.h"
 
+// Generate a random string of given length
 char* rand_string(size_t size) {
     char* str = (char*)malloc(size * sizeof(char) + 1);
     const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -61,4 +62,14 @@ char** str_split(char* str, const char c) {
     }
 
     return result;
+}
+
+// Truncate to the first newline
+void str_trim_lf(char* arr, int length) {
+    for (int i = 0; i < length; i++) {
+        if (arr[i] == '\n') {
+            arr[i] = '\0';
+            break;
+        }
+    }
 }

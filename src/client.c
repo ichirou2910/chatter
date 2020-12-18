@@ -7,6 +7,7 @@
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <ncurses.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -21,8 +22,12 @@
 volatile sig_atomic_t flag = 0;
 int sockfd = 0;
 char name[NAME_LEN];
+
+// Rooms info collection
 room_t* rooms[CLIENT_MAX_ROOMS];
 int rm_count;
+
+// Time stuff
 time_t now;
 struct tm* local;
 
@@ -35,7 +40,6 @@ int mouse_row, mouse_col;
 int chat_pad_height;
 int chat_pad_row, chat_pad_col;
 int chat_mode = 0;
-int ch;
 
 int main() {
     const char* ip = SERVER_IP;
@@ -118,6 +122,7 @@ int main() {
     box(output_window, 0, 0);
     box(room_list_window, 0, 0);
 
+    // Allow scrolling for chatbox
     scrollok(chat_pad, TRUE);
 
     // Enable keypad for input
@@ -128,37 +133,24 @@ int main() {
     wrefresh(input_window);
     wrefresh(room_list_window);
 
+    // Send name to server
     send(sockfd, name, NAME_LEN, 0);
 
     // Welcome text
-    // wattron(chat_pad, COLOR_PAIR(1));
     print_msg("=== WELCOME TO CHATTER ===", 1);
     print_msg("Type :h for Chatter commands", 1);
-    // wattroff(chat_pad, COLOR_PAIR(1));
-
-    // prefresh(chat_pad, chat_pad_row, chat_pad_col, 4, 36, PAD_VIEW_ROWS, PAD_VIEW_COLS);
 
     // Initial List room
-    // TODO: Fix position
-    // wattron(room_list_window, COLOR_PAIR(1));
     mvwaddstr(chat_window, 0, 2, " CHATBOX ");
     mvwaddstr(room_list_window, 0, 2, " ROOMS ");
     mvwaddstr(input_window, 0, 2, " MESSAGE ");
-    // wattroff(room_list_window, COLOR_PAIR(1));
 
     wrefresh(room_list_window);
     wrefresh(chat_window);
     wrefresh(input_window);
     wrefresh(output_window);
 
-    // Testing
-    // wattron(room_list_pad, COLOR_PAIR(1));
-    // waddstr(room_list_pad, "1. The Normies\n");
-    // wattroff(room_list_pad, COLOR_PAIR(1));
-
-    // prefresh(room_list_pad, chat_pad_row, chat_pad_col, 4, 6, screen_cols - 3, 30);
-
-    // Thread for sending the messages
+    // Thread for sending messages
     pthread_t send_msg_thread;
     if (pthread_create(&send_msg_thread, NULL, (void*)send_msg_handler, NULL) != 0) {
         printf("ERROR: pthread\n");
@@ -180,48 +172,248 @@ int main() {
         }
     }
 
+    // Clean up
     close(sockfd);
     endwin();
 
     return EXIT_SUCCESS;
 }
 
-void str_overwrite_stdout() {
-    wattron(input_pad, COLOR_PAIR(4));
-    wprintw(input_pad, "\r%s", "> ");
-    wattroff(input_pad, COLOR_PAIR(4));
-    wrefresh(input_pad);
-    fflush(stdout);
+void send_msg_handler() {
+    char buffer[BUFFER_SZ] = "";
+    int submitted = 0;
+    int buflen = 0;
+    int ch;
+
+    while (1) {
+        str_overwrite_stdout();
+
+        // Reset
+        strcpy(buffer, "");
+        buflen = 0;
+        submitted = 0;
+
+        // Handle Input
+        noecho();
+        do {
+            ch = wgetch(input_pad);
+            wrefresh(input_pad);
+            switch (ch) {
+            case KEY_UP: // Up = Scroll chat up
+                getyx(input_pad, mouse_col, mouse_row);
+                if (chat_pad_row > 0)
+                    chat_pad_row--;
+                prefresh(chat_pad, chat_pad_row, chat_pad_col, 4, 36, PAD_VIEW_ROWS, PAD_VIEW_COLS);
+                wmove(input_pad, mouse_row, mouse_col);
+                break;
+            case KEY_DOWN: // Down = Scroll chat down
+                getyx(input_pad, mouse_col, mouse_row);
+                if (chat_pad_row < chat_pad_height - screen_rows + 16 && chat_pad_row < PAD_LENGTH)
+                    chat_pad_row++;
+                prefresh(chat_pad, chat_pad_row, chat_pad_col, 4, 36, PAD_VIEW_ROWS, PAD_VIEW_COLS);
+                wmove(input_pad, mouse_row, mouse_col);
+                break;
+            case 127: // Delete
+            case 8: // Backspace
+            case KEY_RIGHT:
+            case KEY_LEFT:
+                // Emulate backspace
+                if (buflen) {
+                    // update msg content
+                    buffer[--buflen] = 0;
+                    // update input box
+                    mvwaddch(input_pad, 0, buflen + 2, 32);
+                    wrefresh(input_pad);
+                    wmove(input_pad, 0, buflen + 2);
+                }
+                break;
+            case 10: // Enter
+                submitted = 1;
+                break;
+            default: // Emulate typing
+                // update msg content
+                buffer[buflen++] = ch;
+                // update input box
+                mvwaddch(input_pad, 0, buflen + 1, ch);
+                wrefresh(input_pad);
+                break;
+            }
+            if (submitted)
+                break;
+        } while (ch != KEY_ENTER);
+        echo();
+
+        buffer[buflen] = 0;
+        // Clear input
+        wclear(input_pad);
+        wrefresh(input_pad);
+
+        // --- Preprocess before sending to server ---
+        // :h - Print help
+        if (!strcmp(buffer, ":h")) {
+            print_help();
+        }
+        // :s - Switch room
+        // Room IDs are mapped to indexes for easier switching
+        else if (!strncmp(buffer, ":s", 2)) {
+            strtok(buffer, " \n");
+            char* param = strtok(NULL, " \n");
+            if (param != NULL) {
+                int idx = atoi(param);
+                if (idx <= 0) {
+                    print_sys("Positive index only!");
+                }
+                else {
+                    if (rooms[idx - 1]) {
+                        // Mark active room in room list window
+                        wclear(room_active_pad);
+                        wattron(room_active_pad, COLOR_PAIR(4));
+                        mvwaddch(room_active_pad, (idx - 1) * 2, 0, '*');
+                        wattroff(room_active_pad, COLOR_PAIR(4));
+                        wrefresh(room_active_pad);
+
+                        // Generate command
+                        sprintf(buffer, ":s %s", rooms[idx - 1]->room_id);
+                        // Send command to server
+                        send(sockfd, buffer, strlen(buffer), 0);
+                    }
+                    else {
+                        print_sys("Room doesn't exist!");
+                    }
+                }
+            }
+            else {
+                print_sys("Please provide index!");
+            }
+        }
+        // :q - Quit room
+        else if (!strncmp(buffer, ":q", 2)) {
+            // Clear active mark
+            wclear(room_active_pad);
+            wrefresh(room_active_pad);
+            // Clear chatbox
+            wclear(chat_pad);
+            prefresh(chat_pad, chat_pad_row, chat_pad_col, 4, 36, PAD_VIEW_ROWS, PAD_VIEW_COLS);
+            // Actually send :q
+            sprintf(buffer, ":q");
+            send(sockfd, buffer, strlen(buffer), 0);
+        }
+        else {
+            // Clear output window
+            wclear(output_pad);
+            wrefresh(output_pad);
+            // Send command to server
+            send(sockfd, buffer, strlen(buffer), 0);
+        }
+    }
+    catch_ctrl_c_and_exit();
 }
 
-void str_trim_lf(char* arr, int length) {
-    for (int i = 0; i < length; i++) {
-        if (arr[i] == '\n') {
-            arr[i] = '\0';
+void recv_msg_handler() {
+    char buffer[BUFFER_SZ] = {};
+    char message[BUFFER_SZ + 18] = {};
+    char* cmd;
+    char* param;
+
+    while (1) {
+        int receive = recv(sockfd, buffer, BUFFER_SZ, 0);
+
+        if (receive > 0) {
+            // Get current mouse position
+            getyx(input_pad, mouse_col, mouse_row);
+            buffer[strlen(buffer)] = 0;
+            // Get message header
+            cmd = strtok(buffer, " \n");
+
+            // [FILE] - Incoming file
+            if (!strcmp(cmd, "[FILE]")) {
+                param = strtok(NULL, "");
+
+                // Print file notification
+                time(&now);
+                local = localtime(&now);
+                sprintf(message, "%02d:%02d ~ [FILE] %s", local->tm_hour, local->tm_min, param);
+                print_msg(message, 3);
+
+                // Initialize
+                int fd = open(param, O_WRONLY | O_CREAT | O_EXCL, 0700);
+                char fileBuf[BUFFER_SZ];
+                memset(fileBuf, 0x0, BUFFER_SZ);
+                int bufLen = 0;
+
+                // Receive file
+                while ((bufLen = read(sockfd, fileBuf, BUFFER_SZ)) > 0) {
+                    int write_sz = write(fd, fileBuf, bufLen);
+                    memset(fileBuf, 0x0, BUFFER_SZ);
+                    if (write_sz < bufLen) {
+                        break;
+                    }
+                    if (bufLen == 0 || bufLen != BUFFER_SZ) {
+                        break;
+                    }
+                }
+                close(fd);
+            }
+            // [INFO] - Incoming info data
+            else if (!strcmp(cmd, "[INFO]")) {
+                param = strtok(NULL, "");
+                print_info(param);
+            }
+            // [ROOMS] - Incoming room list
+            else if (!strcmp(cmd, "[ROOMS]")) {
+                param = strtok(NULL, "");
+                update_room_list(param);
+            }
+            // [MESSAGES] - Incoming chatroom's previous messages
+            else if (!strcmp(cmd, "[MESSAGES]")) {
+                param = strtok(NULL, "");
+                print_chat(param);
+            }
+            // [SYSTEM] - Incoming system message
+            else if (!strcmp(cmd, "[SYSTEM]")) {
+                cmd[strlen(cmd)] = ' ';
+                print_sys(buffer + 9);
+            }
+            // A normal chat message
+            else {
+                cmd[strlen(cmd)] = ' ';
+                time(&now);
+                local = localtime(&now);
+                sprintf(message, "%02d:%02d ~ %s", local->tm_hour, local->tm_min, buffer);
+                print_msg(message, 0);
+            }
+            wmove(input_pad, mouse_col, mouse_row);
+            str_overwrite_stdout();
+        }
+        else {
             break;
         }
+
+        bzero(buffer, BUFFER_SZ);
+        bzero(message, BUFFER_SZ + 18);
     }
 }
 
-void catch_ctrl_c_and_exit() {
-    flag = 1;
-}
-
-// Print received messages
+// Print a message
 void print_msg(char* str, int color) {
+    // Watch for content height
     chat_pad_height = chat_pad_height + 1 + strlen(str) / (PAD_VIEW_COLS);
+
+    // Print message
     if (str != NULL) {
         if (color)
             wattron(chat_pad, COLOR_PAIR(color));
         wprintw(chat_pad, "%s\n", str);
         if (color)
             wattroff(chat_pad, COLOR_PAIR(color));
+        // Scroll down to fit if needed
         auto_scroll(chat_pad_height);
     }
 
     prefresh(chat_pad, chat_pad_row, chat_pad_col, 4, 36, PAD_VIEW_ROWS, PAD_VIEW_COLS);
 }
 
+// Print help content
 void print_help() {
     print_msg("[HELP]", 5);
     print_msg("Chatter commands:", 5);
@@ -239,6 +431,7 @@ void print_help() {
     print_msg("- Down             - Scroll chatbox down", 5);
 }
 
+// Print room info
 void print_info(char* info) {
     char** tokens = str_split(info, '\n');
     for (int i = 0; *(tokens + i); i++) {
@@ -248,6 +441,7 @@ void print_info(char* info) {
     free(tokens);
 }
 
+// Print chatroom's previous messages
 void print_chat(char* content) {
     // Clear chatbox
     wclear(chat_pad);
@@ -269,6 +463,7 @@ void print_chat(char* content) {
     prefresh(chat_pad, chat_pad_row, chat_pad_col, 4, 36, PAD_VIEW_ROWS, PAD_VIEW_COLS);
 }
 
+// Print system message
 void print_sys(char* msg) {
     wclear(output_pad);
     wattron(output_pad, COLOR_PAIR(3));
@@ -277,17 +472,23 @@ void print_sys(char* msg) {
     wrefresh(output_pad);
 }
 
+// Update ROOMS window content
 void update_room_list(char* list) {
-    // Clear List
+    // Clear old list
     wclear(room_list_pad);
+
     if (list != NULL) {
-        // Generate tokens
+        // Prepare list
         char** tokens = str_split(list, '\n');
-        int i = 0;
-        int idx = 0;
+        int i = 0; // Token index
+        int idx = 0; // Collection index
+
+        // Update
         wattron(room_list_pad, COLOR_PAIR(1));
         while (*(tokens + i)) {
             room_t* gr = (room_t*)malloc(sizeof(room_t));
+
+            // Print
             mvwprintw(room_list_pad, idx * 2, 0, "%d. %s\n", idx + 1, *(tokens + i));
             strcpy(gr->room_name, *(tokens + i));
             free(*(tokens + i));
@@ -295,6 +496,8 @@ void update_room_list(char* list) {
             strcpy(gr->room_id, *(tokens + i));
             free(*(tokens + i));
             i++;
+
+            // Add to collection
             if (rooms[idx]) {
                 free(rooms[idx]);
             }
@@ -302,10 +505,24 @@ void update_room_list(char* list) {
             idx++;
         }
         wattroff(room_list_pad, COLOR_PAIR(1));
+
+        // Cleanup
         free(tokens);
     }
-    // prefresh(room_list_pad, chat_pad_row, chat_pad_col, 4, 6, screen_rows - 3, 30);
     wrefresh(room_list_pad);
+}
+
+// Print prompt
+void str_overwrite_stdout() {
+    wattron(input_pad, COLOR_PAIR(4));
+    wprintw(input_pad, "\r%s", "> ");
+    wattroff(input_pad, COLOR_PAIR(4));
+    wrefresh(input_pad);
+    fflush(stdout);
+}
+
+void catch_ctrl_c_and_exit() {
+    flag = 1;
 }
 
 // Auto scroll down if necessary when a new message comes
@@ -322,213 +539,4 @@ void reset_chat_pad() {
     chat_pad_height = 0;
     wclear(chat_pad);
     prefresh(chat_pad, chat_pad_row, chat_pad_col, 4, 36, PAD_VIEW_ROWS, PAD_VIEW_COLS);
-}
-
-void recv_msg_handler() {
-    char buffer[BUFFER_SZ] = {};
-    char message[BUFFER_SZ + 18] = {};
-    char* cmd;
-    char* param;
-
-    while (1) {
-        int receive = recv(sockfd, buffer, BUFFER_SZ, 0);
-
-        if (receive > 0) {
-            getyx(input_pad, mouse_col, mouse_row);
-            buffer[strlen(buffer)] = 0;
-            cmd = strtok(buffer, " \n");
-            int color = 0;
-
-            if (!strcmp(cmd, "[FILE]")) {
-                param = strtok(NULL, "");
-                // Print file notification
-                time(&now);
-                local = localtime(&now);
-                sprintf(message, "%02d:%02d ~ [FILE] %s", local->tm_hour, local->tm_min, param);
-                print_msg(message, 3);
-
-                // Initialize
-                int fd = open(param, O_WRONLY | O_CREAT | O_EXCL, 0700);
-                char fileBuf[BUFFER_SZ];
-                memset(fileBuf, 0x0, BUFFER_SZ);
-                int bufLen = 0;
-                // int pck_cnt = 0;
-
-                // Get file size
-                // char tmpBuf[BUFFER_SZ];
-                // recv(sockfd, tmpBuf, BUFFER_SZ, 0);
-                // long file_size = atol(tmpBuf);
-                // printf("File size: %ld\n", file_size);
-
-                while ((bufLen = read(sockfd, fileBuf, BUFFER_SZ)) > 0) {
-                    int write_sz = write(fd, fileBuf, bufLen);
-                    memset(fileBuf, 0x0, BUFFER_SZ);
-                    // file_size -= (long)bufLen;
-                    // printf("%d - Data left: %ld\n", pck_cnt++, file_size);
-                    if (write_sz < bufLen) {
-                        break;
-                    }
-                    if (bufLen == 0 || bufLen != BUFFER_SZ) {
-                        break;
-                    }
-                }
-                close(fd);
-                // printf("[SYSTEM] File received\n");
-                // str_overwrite_stdout();
-                // continue;
-            }
-            else if (!strcmp(cmd, "[INFO]")) {
-                param = strtok(NULL, "");
-                print_info(param);
-            }
-            else if (!strcmp(cmd, "[ROOMS]")) {
-                param = strtok(NULL, "");
-                update_room_list(param);
-            }
-            else if (!strcmp(cmd, "[MESSAGES]")) {
-                param = strtok(NULL, "");
-                print_chat(param);
-            }
-            else if (!strcmp(cmd, "[SYSTEM]")) {
-                cmd[strlen(cmd)] = ' ';
-                print_sys(buffer + 9);
-            }
-            else {
-                cmd[strlen(cmd)] = ' ';
-                time(&now);
-                local = localtime(&now);
-                sprintf(message, "%02d:%02d ~ %s", local->tm_hour, local->tm_min, buffer);
-                print_msg(message, color);
-                // str_overwrite_stdout();
-            }
-            wmove(input_pad, mouse_col, mouse_row);
-            str_overwrite_stdout();
-        }
-        else {
-            break;
-        }
-        // }
-
-        bzero(buffer, BUFFER_SZ);
-        bzero(message, BUFFER_SZ + 18);
-    }
-}
-
-void send_msg_handler() {
-    char buffer[BUFFER_SZ] = "";
-    int submitted = 0;
-    int buflen = 0;
-
-    while (1) {
-        str_overwrite_stdout();
-
-        // Reset
-        strcpy(buffer, "");
-        buflen = 0;
-        submitted = 0;
-
-        // Handle Input
-        noecho();
-        do {
-            ch = wgetch(input_pad);
-            wrefresh(input_pad);
-            switch (ch) {
-            case KEY_UP:
-                getyx(input_pad, mouse_col, mouse_row);
-                if (chat_pad_row > 0)
-                    chat_pad_row--;
-                prefresh(chat_pad, chat_pad_row, chat_pad_col, 4, 36, PAD_VIEW_ROWS, PAD_VIEW_COLS);
-                wmove(input_pad, mouse_row, mouse_col);
-                break;
-            case KEY_DOWN:
-                getyx(input_pad, mouse_col, mouse_row);
-                if (chat_pad_row < chat_pad_height - screen_rows + 16 && chat_pad_row < PAD_LENGTH)
-                    chat_pad_row++;
-                prefresh(chat_pad, chat_pad_row, chat_pad_col, 4, 36, PAD_VIEW_ROWS, PAD_VIEW_COLS);
-                wmove(input_pad, mouse_row, mouse_col);
-                break;
-            case 127: // Delete
-            case 8: // Backspace
-            case KEY_RIGHT:
-            case KEY_LEFT:
-                if (buflen) {
-                    // update msg content
-                    buffer[--buflen] = 0;
-                    // update input box
-                    mvwaddch(input_pad, 0, buflen + 2, 32);
-                    wrefresh(input_pad);
-                    wmove(input_pad, 0, buflen + 2);
-                }
-                break;
-            case 10: // Enter
-                submitted = 1;
-                break;
-            default:
-                // update msg content
-                buffer[buflen++] = ch;
-                // update input box
-                mvwaddch(input_pad, 0, buflen + 1, ch);
-                wrefresh(input_pad);
-                break;
-            }
-            if (submitted)
-                break;
-        } while (ch != KEY_ENTER);
-        echo();
-
-        buffer[buflen] = 0;
-        wclear(input_pad);
-        wrefresh(input_pad);
-
-        if (!strcmp(buffer, ":h")) {
-            print_help();
-        }
-        else if (!strncmp(buffer, ":s", 2)) {
-            strtok(buffer, " \n");
-            char* param = strtok(NULL, " \n");
-            if (param != NULL) {
-                int idx = atoi(param);
-                if (idx <= 0) {
-                    print_sys("Positive index only!");
-                }
-                else {
-                    if (rooms[idx - 1]) {
-                        // Mark active room in room list window
-                        wclear(room_active_pad);
-                        wattron(room_active_pad, COLOR_PAIR(4));
-                        mvwaddch(room_active_pad, (idx - 1) * 2, 0, '*');
-                        wattroff(room_active_pad, COLOR_PAIR(4));
-                        wrefresh(room_active_pad);
-
-                        sprintf(buffer, ":s %s", rooms[idx - 1]->room_id);
-                        send(sockfd, buffer, strlen(buffer), 0);
-                    }
-                    else {
-                        print_sys("Room doesn't exist!");
-                    }
-                }
-            }
-            else {
-                print_sys("Please provide index!");
-            }
-        }
-        else if (!strncmp(buffer, ":q", 2)) {
-            // Clear active mark
-            wclear(room_active_pad);
-            wrefresh(room_active_pad);
-            // Clear chatbox
-            wclear(chat_pad);
-            prefresh(chat_pad, chat_pad_row, chat_pad_col, 4, 36, PAD_VIEW_ROWS, PAD_VIEW_COLS);
-            // Actually send :q
-            sprintf(buffer, ":q");
-            send(sockfd, buffer, strlen(buffer), 0);
-        }
-        else {
-            wclear(output_pad);
-            wrefresh(output_pad);
-            send(sockfd, buffer, strlen(buffer), 0);
-        }
-        // bzero(buffer, BUFFER_SZ);
-    }
-    catch_ctrl_c_and_exit();
 }

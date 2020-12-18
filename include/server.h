@@ -38,45 +38,34 @@ typedef struct {
     int idx;                                // Room index
 } room_t;
 
-// UTILITIES ===
-
-void str_overwrite_stdout();
-void str_trim_lf(char* arr, int length);
-void print_ip_addr(struct sockaddr_in addr);
-int check_used_name(char* name, char* room_id);
-
-// ===
-// SERVER FUNCTIONS ===
-
+// === SERVER FUNCTIONS ===
 void join_server(client_t* cl);
 void leave_server(int uid);
+// ---
 
-// ===
-// ROOM FUNCTIONS ===
-
+// === ROOM FUNCTIONS ===
 char* create_room(char* password, char* name);
-int check_room(char* room_id, char* password);
 room_t* get_room(char* room_id);
 int join_room(char* room_id, char* password, client_t* cl);
-void leave_all_rooms(client_t* cl);
-int leave_room(char* room_id, client_t* cl);
 int switch_room(char* room_id, client_t* cl);
-void return_lobby(client_t* cl);
+int leave_room(char* room_id, client_t* cl);
+void leave_all_rooms(client_t* cl);
+// ---
 
 // === DATA PUBLISHING ===
 void send_info_room(char* room_id, int uid);
 void send_list_room(int uid);
 void send_list_msg(char* room_id, int uid);
-
 // ---
-// MESSAGING FUNCTION ===
+
+// === MESSAGING FUNCTION ===
 void send_room(char* s, char* room_id);
 void send_user(char* s, int uid);
 void send_other(char* s, int uid, char* room_id);
 void send_file(char* path, int uid, char* room_id);
-
 // ---
 
+// Client thread
 void* handle_client(void* arg);
 
 #endif
