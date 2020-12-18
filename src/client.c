@@ -225,9 +225,9 @@ void print_msg(char* str, int color) {
 void print_help() {
     print_msg("[HELP]", 5);
     print_msg("Chatter commands:", 5);
-    print_msg("- :c <pass> <name> - CREATE a new room", 5);
+    print_msg("- :c <pass> <name> - CREATE a new room, <pass> must not have space", 5);
     print_msg("- :j <id> <pass>   - JOIN a room", 5);
-    print_msg("- :s <id>          - SWITCH to room", 5);
+    print_msg("- :s <num>         - SWITCH to room with index displayed in [ROOMS]", 5);
     print_msg("- :r <name>        - RENAME self", 5);
     print_msg("- :q               - QUIT current room", 5);
     print_msg("- :f <path>        - Send FILE to roommate", 5);
