@@ -302,7 +302,7 @@ void send_file(char* path, int uid, char* room_id) {
     // Notify of file transmission
     char msg[15 + strlen(filename) + 1];
     for (int i = 0; i < rm->cli_count - 1; i++) {
-        sprintf(msg, "[SYSTEM] File: %s", filename);
+        sprintf(msg, "[FILE] %s", filename);
         write(idx[i], msg, strlen(msg));
         // sprintf(msg, "%ld", file_stat.st_size);
         // write(idx[i], msg, strlen(msg));
