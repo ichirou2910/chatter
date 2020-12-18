@@ -306,45 +306,8 @@ void recv_msg_handler() {
     while (1) {
         int receive = recv(sockfd, buffer, BUFFER_SZ, 0);
 
-        // if (!strncmp(buffer, "[SYSTEM] File: ", 15)) {
-        //     // Print file notification
-        //     time(&now);
-        //     local = localtime(&now);
-        //     sprintf(message, "%02d:%02d ~ %s\n", local->tm_hour, local->tm_min, buffer);
-        //     print_msg(message, 3);
-
-        //     // Initialize
-        //     int fd = open(buffer + 15, O_WRONLY | O_CREAT | O_EXCL, 0700);
-        //     char fileBuf[BUFFER_SZ];
-        //     memset(fileBuf, 0x0, BUFFER_SZ);
-        //     int bufLen = 0;
-        //     // int pck_cnt = 0;
-
-        //     // Get file size
-        //     // char tmpBuf[BUFFER_SZ];
-        //     // recv(sockfd, tmpBuf, BUFFER_SZ, 0);
-        //     // long file_size = atol(tmpBuf);
-        //     // printf("File size: %ld\n", file_size);
-
-        //     while ((bufLen = read(sockfd, fileBuf, BUFFER_SZ)) > 0) {
-        //         int write_sz = write(fd, fileBuf, bufLen);
-        //         memset(fileBuf, 0x0, BUFFER_SZ);
-        //         // file_size -= (long)bufLen;
-        //         // printf("%d - Data left: %ld\n", pck_cnt++, file_size);
-        //         if (write_sz < bufLen) {
-        //             break;
-        //         }
-        //         if (bufLen == 0 || bufLen != BUFFER_SZ) {
-        //             break;
-        //         }
-        //     }
-        //     close(fd);
-        //     // printf("[SYSTEM] File received\n");
-        //     str_overwrite_stdout();
-        //     // continue;
-        // }
-        // else {
         if (receive > 0) {
+            getyx(input_pad, mouse_col, mouse_row);
             buffer[strlen(buffer)] = 0;
             cmd = strtok(buffer, " \n");
             int color = 0;
@@ -405,14 +368,13 @@ void recv_msg_handler() {
             }
             else {
                 cmd[strlen(cmd)] = ' ';
-                getyx(input_pad, mouse_col, mouse_row);
                 time(&now);
                 local = localtime(&now);
                 sprintf(message, "%02d:%02d ~ %s", local->tm_hour, local->tm_min, buffer);
                 print_msg(message, color);
-                wmove(input_pad, mouse_col, mouse_row);
                 // str_overwrite_stdout();
             }
+            wmove(input_pad, mouse_col, mouse_row);
             str_overwrite_stdout();
         }
         else {
@@ -430,31 +392,33 @@ void send_msg_handler() {
 
     while (1) {
         str_overwrite_stdout();
-        // do {
-        //     noecho();
-        //     ch = wgetch(input_pad);
-        //     wrefresh(input_pad);
-        //     switch (ch) {
-        //     case KEY_UP:
-        //         if (chat_pad_row > 0)
-        //             chat_pad_row--;
-        //         prefresh(chat_pad, chat_pad_row, chat_pad_col, 4, 6, PAD_VIEW_ROWS, PAD_VIEW_COLS);
-        //         break;
-        //         // Don't let use scroll to far
-        //     case KEY_DOWN:
-        //         if (chat_pad_row < chat_pad_height - screen_cols + 13 && chat_pad_row < PAD_LENGTH)
-        //             chat_pad_row++;
-        //         prefresh(chat_pad, chat_pad_row, chat_pad_col, 4, 6, PAD_VIEW_ROWS, PAD_VIEW_COLS);
-        //         break;
-        //     case 'i':
-        //         echo();
-        //         wgetnstr(input_pad, buffer, BUFFER_SZ);
-        //         break;
-        //     default:
-        //         break;
-        //     }
-        // } while (ch != 'i');
-        wgetnstr(input_pad, buffer, BUFFER_SZ);
+
+        // Handle Input
+        do {
+            noecho();
+            ch = wgetch(input_pad);
+            wrefresh(input_pad);
+            switch (ch) {
+            case KEY_UP:
+                if (chat_pad_row > 0)
+                    chat_pad_row--;
+                prefresh(chat_pad, chat_pad_row, chat_pad_col, 4, 36, PAD_VIEW_ROWS, PAD_VIEW_COLS);
+                break;
+            case KEY_DOWN:
+                if (chat_pad_row < chat_pad_height - screen_rows + 12 && chat_pad_row < PAD_LENGTH)
+                    chat_pad_row++;
+                prefresh(chat_pad, chat_pad_row, chat_pad_col, 4, 36, PAD_VIEW_ROWS, PAD_VIEW_COLS);
+                break;
+            case 'i':
+                echo();
+                wgetnstr(input_pad, buffer, BUFFER_SZ);
+                break;
+            default:
+                break;
+            }
+        } while (ch != 'i');
+
+        // wgetnstr(input_pad, buffer, BUFFER_SZ);
         wclear(input_pad);
         wrefresh(input_pad);
 
