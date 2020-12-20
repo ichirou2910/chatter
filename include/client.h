@@ -17,7 +17,6 @@
 #define PAD_LENGTH 1000
 #define PAD_VIEW_ROWS screen_rows - 13
 #define PAD_VIEW_COLS screen_cols - 7
-
 // Display color
 #define BLUE_TEXT 1
 #define YELLOW_TEXT 2
@@ -40,6 +39,7 @@ void print_normal(char* str, int color);
 void print_msg(char* msg);
 void print_help();
 void print_info(char* info);
+void print_user(char* info);
 void print_chat(char* content);
 void print_sys(char* msg);
 void update_room_list(char* list);

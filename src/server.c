@@ -418,6 +418,14 @@ void send_list_room(int uid) {
     }
 }
 
+// Send user info 
+void send_user_info(char* name, int uid) {
+    char* info = (char*)malloc(NAME_LEN + 14);
+    sprintf(info, "[USER] %s\n#%04d", name, uid);
+    send_user(info, uid);
+    free(info);
+}
+
 // Send room's previous messages
 void send_list_msg(char* room_id, int uid) {
     char* tmp = (char*)malloc(BUFFER_SZ + 1);
@@ -617,6 +625,7 @@ void* handle_client(void* arg) {
         free(name);
         cli->rm_count = 0;
         printf("[SYSTEM] User %s (uid: %d) joined the server\n", cli->name, cli->uid);
+        send_user_info(cli->name, cli->uid);
     }
 
     // While stay connected to the chat
@@ -728,25 +737,20 @@ void* handle_client(void* arg) {
             }
             // :r - Rename
             else if (!strcmp(cmd, ":r")) {
-                if (!strcmp(cli->active_room, "")) {
-                    sprintf(buffer, "[SYSTEM] You are not in a room");
-                    send_user(buffer, cli->uid);
+                param = strtok(NULL, " \n");
+                if (param != NULL) {
+                    char* name = (char*)malloc(NAME_LEN + 1);
+                    strcpy(name, param);
+                    name[NAME_LEN] = 0; // Truncate
+                    sprintf(buffer, "[SYSTEM] Renamed %s to %s", cli->name, name);
+                    strcpy(cli->name, name);
+                    send_room(buffer, cli->active_room);
+                    send_user_info(cli->name, cli->uid);
+                    free(name);
                 }
                 else {
-                    param = strtok(NULL, " \n");
-                    if (param != NULL) {
-                        char* name = (char*)malloc(NAME_LEN + 1);
-                        strcpy(cli->name, param);
-                        name[NAME_LEN] = 0; // Truncate
-                        sprintf(buffer, "[SYSTEM] Renamed %s to %s", cli->name, name);
-                        strcpy(cli->name, name);
-                        send_room(buffer, cli->active_room);
-                        free(name);
-                    }
-                    else {
-                        sprintf(buffer, "[SYSTEM] Not enough info provided");
-                        send_user(buffer, cli->uid);
-                    }
+                    sprintf(buffer, "[SYSTEM] Not enough info provided");
+                    send_user(buffer, cli->uid);
                 }
             }
             // :q - Quit room

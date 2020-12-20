@@ -35,6 +35,7 @@ WINDOW* chat_window, * chat_pad;
 WINDOW* room_list_window, * room_list_pad, * room_active_pad;
 WINDOW* input_window, * input_pad;
 WINDOW* output_window, * output_pad;
+WINDOW* user_window, * user_pad;
 int screen_cols, screen_rows;
 int mouse_row, mouse_col;
 int chat_pad_height;
@@ -105,12 +106,17 @@ int main() {
     input_window = newwin(7, screen_cols - 40, screen_rows - 11, 35);
     input_pad = derwin(input_window, 4, screen_cols - 42, 2, 1);
 
-    room_list_window = newwin(screen_rows - 3, 30, 2, 5);
-    room_list_pad = derwin(room_list_window, screen_rows - 6, 27, 2, 2);
-    room_active_pad = derwin(room_list_window, screen_rows - 6, 1, 2, 1);
+    room_list_window = newwin(screen_rows - 7, 30, 6, 5);
+    room_list_pad = derwin(room_list_window, screen_rows - 10, 27, 2, 2);
+    room_active_pad = derwin(room_list_window, screen_rows - 10, 1, 2, 1);
 
     output_window = newwin(3, screen_cols - 40, screen_rows - 4, 35);
     output_pad = derwin(output_window, 1, screen_cols - 43, 1, 2);
+
+    // user_window = newwin(4, 30, screen_rows - 5, 5);
+    // user_pad = derwin(user_window, 2, 27, 1, 2);
+    user_window = newwin(4, 30, 2, 5);
+    user_pad = derwin(user_window, 2, 27, 1, 2);
 
     chat_pad_row = 0;
     chat_pad_col = 0;
@@ -121,6 +127,7 @@ int main() {
     box(input_window, 0, 0);
     box(output_window, 0, 0);
     box(room_list_window, 0, 0);
+    box(user_window, 0, 0);
 
     // Allow scrolling for chatbox
     scrollok(chat_pad, TRUE);
@@ -132,6 +139,7 @@ int main() {
     wrefresh(chat_window);
     wrefresh(input_window);
     wrefresh(room_list_window);
+    wrefresh(user_window);
 
     // Send name to server
     send(sockfd, name, NAME_LEN, 0);
@@ -359,6 +367,11 @@ void recv_msg_handler() {
                 param = strtok(NULL, "");
                 print_info(param);
             }
+            // [USER] - Incoming User info
+            else if (!strcmp(cmd, "[USER]")) {
+                param = strtok(NULL, "");
+                print_user(param);
+            }
             // [ROOMS] - Incoming room list
             else if (!strcmp(cmd, "[ROOMS]")) {
                 param = strtok(NULL, "");
@@ -484,6 +497,13 @@ void print_info(char* info) {
         free(*(tokens + i));
     }
     free(tokens);
+}
+
+// Print user info
+void print_user(char* info) {
+    wclear(user_pad);
+    waddstr(user_pad, info);
+    wrefresh(user_pad);
 }
 
 // Print chatroom's previous messages
