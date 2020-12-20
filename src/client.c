@@ -35,6 +35,7 @@ WINDOW* chat_window, * chat_pad;
 WINDOW* room_list_window, * room_list_pad, * room_active_pad;
 WINDOW* input_window, * input_pad;
 WINDOW* output_window, * output_pad;
+WINDOW* user_window, * user_pad;
 int screen_cols, screen_rows;
 int mouse_row, mouse_col;
 int chat_pad_height;
@@ -105,12 +106,17 @@ int main() {
     input_window = newwin(7, screen_cols - 40, screen_rows - 11, 35);
     input_pad = derwin(input_window, 4, screen_cols - 42, 2, 1);
 
-    room_list_window = newwin(screen_rows - 3, 30, 2, 5);
-    room_list_pad = derwin(room_list_window, screen_rows - 6, 27, 2, 2);
-    room_active_pad = derwin(room_list_window, screen_rows - 6, 1, 2, 1);
+    room_list_window = newwin(screen_rows - 7, 30, 6, 5);
+    room_list_pad = derwin(room_list_window, screen_rows - 10, 27, 2, 2);
+    room_active_pad = derwin(room_list_window, screen_rows - 10, 1, 2, 1);
 
     output_window = newwin(3, screen_cols - 40, screen_rows - 4, 35);
     output_pad = derwin(output_window, 1, screen_cols - 43, 1, 2);
+
+    // user_window = newwin(4, 30, screen_rows - 5, 5);
+    // user_pad = derwin(user_window, 2, 27, 1, 2);
+    user_window = newwin(4, 30, 2, 5);
+    user_pad = derwin(user_window, 2, 27, 1, 2);
 
     chat_pad_row = 0;
     chat_pad_col = 0;
@@ -121,6 +127,7 @@ int main() {
     box(input_window, 0, 0);
     box(output_window, 0, 0);
     box(room_list_window, 0, 0);
+    box(user_window, 0, 0);
 
     // Allow scrolling for chatbox
     scrollok(chat_pad, TRUE);
@@ -132,13 +139,14 @@ int main() {
     wrefresh(chat_window);
     wrefresh(input_window);
     wrefresh(room_list_window);
+    wrefresh(user_window);
 
     // Send name to server
     send(sockfd, name, NAME_LEN, 0);
 
     // Welcome text
-    print_msg("=== WELCOME TO CHATTER ===", 1);
-    print_msg("Type :h for Chatter commands", 1);
+    print_normal("=== WELCOME TO CHATTER ===", 1);
+    print_normal("Type :h for Chatter commands", 1);
 
     // Initial List room
     mvwaddstr(chat_window, 0, 2, " CHATBOX ");
@@ -333,7 +341,7 @@ void recv_msg_handler() {
                 time(&now);
                 local = localtime(&now);
                 sprintf(message, "%02d:%02d ~ [FILE] %s", local->tm_hour, local->tm_min, param);
-                print_msg(message, 3);
+                print_normal(message, 3);
 
                 // Initialize
                 int fd = open(param, O_WRONLY | O_CREAT | O_EXCL, 0700);
@@ -359,6 +367,11 @@ void recv_msg_handler() {
                 param = strtok(NULL, "");
                 print_info(param);
             }
+            // [USER] - Incoming User info
+            else if (!strcmp(cmd, "[USER]")) {
+                param = strtok(NULL, "");
+                print_user(param);
+            }
             // [ROOMS] - Incoming room list
             else if (!strcmp(cmd, "[ROOMS]")) {
                 param = strtok(NULL, "");
@@ -377,10 +390,10 @@ void recv_msg_handler() {
             // A normal chat message
             else {
                 cmd[strlen(cmd)] = ' ';
-                time(&now);
-                local = localtime(&now);
-                sprintf(message, "%02d:%02d ~ %s", local->tm_hour, local->tm_min, buffer);
-                print_msg(message, 0);
+                // time(&now);
+                // local = localtime(&now);
+                // sprintf(message, "%02d:%02d ~ %s", local->tm_hour, local->tm_min, buffer);
+                print_msg(buffer);
             }
             wmove(input_pad, mouse_col, mouse_row);
             str_overwrite_stdout();
@@ -394,8 +407,8 @@ void recv_msg_handler() {
     }
 }
 
-// Print a message
-void print_msg(char* str, int color) {
+// Print STR to chatbox with specified COLOR
+void print_normal(char* str, int color) {
     // Watch for content height
     chat_pad_height = chat_pad_height + 1 + strlen(str) / (PAD_VIEW_COLS);
 
@@ -413,32 +426,84 @@ void print_msg(char* str, int color) {
     prefresh(chat_pad, chat_pad_row, chat_pad_col, 4, 36, PAD_VIEW_ROWS, PAD_VIEW_COLS);
 }
 
+// Print a chat message
+// [Name#uid] ~ hh:mm
+// Message
+void print_msg(char* msg) {
+    // Watch for content height
+    chat_pad_height = chat_pad_height + 2 + strlen(msg) / (PAD_VIEW_COLS);
+    int idx = 0;
+
+    // Open bracket
+    wattron(chat_pad, COLOR_PAIR(2));
+    waddch(chat_pad, msg[idx++]);
+    wattroff(chat_pad, COLOR_PAIR(2));
+
+    // Name part
+    wattron(chat_pad, COLOR_PAIR(1));
+    while (msg[idx] != '#') {
+        waddch(chat_pad, msg[idx++]);
+    }
+    wattroff(chat_pad, COLOR_PAIR(1));
+
+    // UID part
+    wattron(chat_pad, COLOR_PAIR(4));
+    while (msg[idx] != ']') {
+        waddch(chat_pad, msg[idx++]);
+    }
+    wattroff(chat_pad, COLOR_PAIR(4));
+
+    // Closing bracket
+    wattron(chat_pad, COLOR_PAIR(2));
+    waddch(chat_pad, msg[idx++]);
+
+    // Message
+    while (msg[idx] != '\n') {
+        waddch(chat_pad, msg[idx++]);
+    }
+    wattroff(chat_pad, COLOR_PAIR(2));
+    waddstr(chat_pad, msg + idx);
+
+    // Final line break
+    waddch(chat_pad, '\n');
+
+    // Refresh
+    prefresh(chat_pad, chat_pad_row, chat_pad_col, 4, 36, PAD_VIEW_ROWS, PAD_VIEW_COLS);
+}
+
 // Print help content
 void print_help() {
-    print_msg("[HELP]", 5);
-    print_msg("Chatter commands:", 5);
-    print_msg("- :c <pass> <name> - CREATE a new room, <pass> must not have space", 5);
-    print_msg("- :j <id> <pass>   - JOIN a room", 5);
-    print_msg("- :s <num>         - SWITCH to room with index displayed in [ROOMS]", 5);
-    print_msg("- :r <name>        - RENAME self", 5);
-    print_msg("- :q               - QUIT current room", 5);
-    print_msg("- :f <path>        - Send FILE to roommate", 5);
-    print_msg("- :i               - Print room INFO", 5);
-    print_msg("---", 5);
-    print_msg("Chatter keybinding:", 5);
-    print_msg("- Ctrl+C           - Quit Chatter", 5);
-    print_msg("- Up               - Scroll chatbox up", 5);
-    print_msg("- Down             - Scroll chatbox down", 5);
+    print_normal("[HELP]", 5);
+    print_normal("Chatter commands:", 5);
+    print_normal("- :c <pass> <name> - CREATE a new room, <pass> must not have space", 5);
+    print_normal("- :j <id> <pass>   - JOIN a room", 5);
+    print_normal("- :s <num>         - SWITCH to room with index displayed in [ROOMS]", 5);
+    print_normal("- :r <name>        - RENAME self", 5);
+    print_normal("- :q               - QUIT current room", 5);
+    print_normal("- :f <path>        - Send FILE to roommate", 5);
+    print_normal("- :i               - Print room INFO", 5);
+    print_normal("---", 5);
+    print_normal("Chatter keybinding:", 5);
+    print_normal("- Ctrl+C           - Quit Chatter", 5);
+    print_normal("- Up               - Scroll chatbox up", 5);
+    print_normal("- Down             - Scroll chatbox down", 5);
 }
 
 // Print room info
 void print_info(char* info) {
     char** tokens = str_split(info, '\n');
     for (int i = 0; *(tokens + i); i++) {
-        print_msg(tokens[i], 2);
+        print_normal(tokens[i], 2);
         free(*(tokens + i));
     }
     free(tokens);
+}
+
+// Print user info
+void print_user(char* info) {
+    wclear(user_pad);
+    waddstr(user_pad, info);
+    wrefresh(user_pad);
 }
 
 // Print chatroom's previous messages
@@ -448,13 +513,27 @@ void print_chat(char* content) {
     chat_pad_row = 0;
     chat_pad_height = 0;
 
+    char* msg = (char*)malloc(BUFFER_SZ + NAME_LEN + 17);
+    strcpy(msg, "");
+
     if (content) {
         char** tokens = str_split(content, '\n');
         if (tokens) {
-            for (int i = 0; *(tokens + i); i++) {
-                print_msg(tokens[i], 0);
-                free(*(tokens + i));
+            int i = 0;
+            while (*(tokens + i)) {
+                // A message takes 2 lines = 2 tokens
+                strcat(msg, tokens[i++]);
+                strcat(msg, "\n");
+                strcat(msg, tokens[i++]);
+                // strcat(msg, "\n");
+                print_msg(msg);
+                strcpy(msg, "");
             }
+            // for (int i = 0; *(tokens + i); i++) {
+
+            //     print_normal(tokens[i], 0);
+            //     free(*(tokens + i));
+            // }
         }
         free(tokens);
     }

@@ -57,6 +57,7 @@ void leave_all_rooms(client_t* cl);
 void send_info_room(char* room_id, int uid);
 void send_list_room(int uid);
 void send_list_msg(char* room_id, int uid);
+void send_user_info(char* name, int uid);
 // ---
 
 // === MESSAGING FUNCTION ===
