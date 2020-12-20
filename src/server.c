@@ -19,7 +19,6 @@
 
 static _Atomic unsigned int cli_count = 0;
 static _Atomic unsigned int rm_count = 0;
-static int uid = 0;
 
 // Time stuff
 time_t now;
@@ -96,7 +95,7 @@ int main() {
         client_t* cl = (client_t*)malloc(sizeof(client_t));
         cl->address = cli_addr;
         cl->sockfd = connfd;
-        cl->uid = uid++;
+        cl->uid = rand() % 10000;
 
         for (int i = 0; i < CLIENT_MAX_ROOMS; i++) {
             cl->room_ids[i][0] = '\0';
@@ -163,11 +162,11 @@ char* create_room(char* password, char* name) {
     strcpy(rm->room_id, id);
     strcpy(rm->password, password);
     strcpy(rm->room_name, name);
-    printf("Created Pass: \n");
-    for (int i = 0; i < PASSWORD_LEN; i++) {
-        printf("%d ", password[i]);
-    }
-    printf("\n");
+    // printf("Created Pass: \n");
+    // for (int i = 0; i < PASSWORD_LEN; i++) {
+    //     printf("%d ", password[i]);
+    // }
+    // printf("\n");
 
     for (int i = 0; i < MAX_ROOMS; i++) {
         if (!rooms[i]) {
@@ -210,7 +209,7 @@ int join_room(char* room_id, char* password, client_t* cl) {
             !strcmp(rooms[i]->room_id, room_id) &&
             !strcmp(rooms[i]->password, password)) {
 
-            printf("Target room name: %s\n", rooms[i]->room_name);
+            // printf("Target room name: %s\n", rooms[i]->room_name);
             int idx = -1;
             int cnt = 0;
             int mem_cnt = rooms[i]->cli_count;
@@ -375,7 +374,7 @@ void send_info_room(char* room_id, int uid) {
     for (int i = 0; i < ROOM_MAX_CLIENTS; i++) {
         if (rm->clients[i]) {
             cnt++;
-            sprintf(user_info, "- %d. %s\n", rm->clients[i]->uid, rm->clients[i]->name);
+            sprintf(user_info, "- %s#%04d\n", rm->clients[i]->name, rm->clients[i]->uid);
             strcat(buffer, user_info);
         }
         else if (cnt == mem_cnt) {
@@ -474,12 +473,12 @@ void send_room(char* s, char* room_id) {
     }
 
     // Add message to room storage
-    time(&now);
-    local = localtime(&now);
-    char* archive = (char*)malloc(strlen(s) + 9);
-    sprintf(archive, "%02d:%02d ~ %s", local->tm_hour, local->tm_min, s);
-    strcpy(rm->messages[rm->mes_count++], archive);
-    free(archive);
+    // time(&now);
+    // local = localtime(&now);
+    // char* archive = (char*)malloc(strlen(s) + 9);
+    // sprintf(archive, "%02d:%02d ~ %s", local->tm_hour, local->tm_min, s);
+    strcpy(rm->messages[rm->mes_count++], s);
+    // free(archive);
 
     pthread_mutex_unlock(&clients_mutex);
 }
@@ -649,11 +648,11 @@ void* handle_client(void* arg) {
 
                 if (password != NULL && name != NULL) {
                     char* result = create_room(password, name);
-                    printf("Result Pass: \n");
-                    for (int i = 0; i < PASSWORD_LEN; i++) {
-                        printf("%d ", password[i]);
-                    }
-                    printf("\n");
+                    // printf("Result Pass: \n");
+                    // for (int i = 0; i < PASSWORD_LEN; i++) {
+                    //     printf("%d ", password[i]);
+                    // }
+                    // printf("\n");
                     join_room(result, password, cli);
 
                     send_list_room(cli->uid);
@@ -798,12 +797,15 @@ void* handle_client(void* arg) {
             }
             // A normal message
             else {
+                time(&now);
+                local = localtime(&now);
+
                 cmd[strlen(cmd)] = ' ';
-                char* msg = (char*)malloc(BUFFER_SZ + NAME_LEN + 4);
-                sprintf(msg, "[%s] %s", cli->name, buffer);
+                char* msg = (char*)malloc(BUFFER_SZ + NAME_LEN + 17);
+                sprintf(msg, "[%s#%04d] ~ %02d:%02d\n%s", cli->name, cli->uid, local->tm_hour, local->tm_min, buffer);
                 send_room(msg, cli->active_room);
 
-                printf("[SYSTEM] Room: %s, User: %s, Message: %s\n", cli->active_room, cli->name, buffer);
+                printf("[SYSTEM] Room: %s, User: %s#%04d, Message: %s\n", cli->active_room, cli->name, cli->uid, buffer);
                 str_trim_lf(buffer, strlen(buffer));
 
                 free(msg);

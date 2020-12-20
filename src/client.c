@@ -377,10 +377,10 @@ void recv_msg_handler() {
             // A normal chat message
             else {
                 cmd[strlen(cmd)] = ' ';
-                time(&now);
-                local = localtime(&now);
-                sprintf(message, "%02d:%02d ~ %s", local->tm_hour, local->tm_min, buffer);
-                print_msg(message, 0);
+                // time(&now);
+                // local = localtime(&now);
+                // sprintf(message, "%02d:%02d ~ %s", local->tm_hour, local->tm_min, buffer);
+                print_msg(buffer, 0);
             }
             wmove(input_pad, mouse_col, mouse_row);
             str_overwrite_stdout();
