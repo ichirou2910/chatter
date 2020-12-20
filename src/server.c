@@ -744,7 +744,7 @@ void* handle_client(void* arg) {
                     name[NAME_LEN] = 0; // Truncate
                     sprintf(buffer, "[SYSTEM] Renamed %s to %s", cli->name, name);
                     strcpy(cli->name, name);
-                    send_room(buffer, cli->active_room);
+                    send_user(buffer, cli->uid);
                     send_user_info(cli->name, cli->uid);
                     free(name);
                 }
