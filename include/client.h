@@ -36,7 +36,8 @@ void send_msg_handler();
 // ---
 
 // === PRINT STUFF ===
-void print_msg(char* str, int color);
+void print_normal(char* str, int color);
+void print_msg(char* msg);
 void print_help();
 void print_info(char* info);
 void print_chat(char* content);
